@@ -67,6 +67,19 @@ export async function initAccounts(): Promise<{
   buyer: AccountInfo;
   sellers: Record<string, AccountInfo>;
 }> {
+  if (storedAccounts) {
+    const sellerAccounts: Record<string, AccountInfo> = {};
+    for (const [name, addr] of Object.entries(storedAccounts.sellerAddrs)) {
+      const bal = await getBalance(addr);
+      sellerAccounts[name] = { address: addr, balance: bal };
+    }
+    const buyerBal = await getBalance(storedAccounts.buyerAddr);
+    return {
+      buyer: { address: storedAccounts.buyerAddr, balance: buyerBal },
+      sellers: sellerAccounts,
+    };
+  }
+
   const algorand = getClient();
 
   let buyerAddr: string;
@@ -74,7 +87,7 @@ export async function initAccounts(): Promise<{
   if (isTestnet() && process.env.AVM_PRIVATE_KEY) {
     const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
     const account = algosdk.mnemonicToSecretKey(
-      algosdk.secretKeyToMnemonic(secretKey)
+      algosdk.secretKeyToMnemonic(secretKey),
     );
     buyerAddr = account.addr.toString();
     algorand.setSignerFromAccount(account);
@@ -90,7 +103,13 @@ export async function initAccounts(): Promise<{
     buyerAddr = buyerAccount.addr.toString();
   }
 
-  const sellerNames = ["cloudmax", "datavault", "quickapi", "bharatcompute", "securehost"];
+  const sellerNames = [
+    "cloudmax",
+    "datavault",
+    "quickapi",
+    "bharatcompute",
+    "securehost",
+  ];
   const sellerAccounts: Record<string, AccountInfo> = {};
   const sellerAddrs: Record<string, string> = {};
 
@@ -104,7 +123,10 @@ export async function initAccounts(): Promise<{
         amount: algo(0.5),
       });
       const bal = await getBalance(sellerAccount.addr.toString());
-      sellerAccounts[name] = { address: sellerAccount.addr.toString(), balance: bal };
+      sellerAccounts[name] = {
+        address: sellerAccount.addr.toString(),
+        balance: bal,
+      };
       sellerAddrs[name] = sellerAccount.addr.toString();
     }
   } else {
@@ -118,7 +140,10 @@ export async function initAccounts(): Promise<{
         amount: algo(100),
       });
       const bal = await getBalance(sellerAccount.addr.toString());
-      sellerAccounts[name] = { address: sellerAccount.addr.toString(), balance: bal };
+      sellerAccounts[name] = {
+        address: sellerAccount.addr.toString(),
+        balance: bal,
+      };
       sellerAddrs[name] = sellerAccount.addr.toString();
     }
   }
@@ -138,7 +163,7 @@ export function getStoredAccounts() {
 
 export async function executePayment(
   sellerAddress: string,
-  amountAlgo: number
+  amountAlgo: number,
 ): Promise<EscrowState> {
   const algorand = getClient();
   if (!storedAccounts) throw new Error("Accounts not initialized");
@@ -146,14 +171,16 @@ export async function executePayment(
   const { buyerAddr } = storedAccounts;
   const buyerBal = await getBalance(buyerAddr);
   if (buyerBal < amountAlgo + 0.1) {
-    throw new Error(`Insufficient balance: ${buyerBal.toFixed(2)} ALGO < ${amountAlgo + 0.1} ALGO needed`);
+    throw new Error(
+      `Insufficient balance: ${buyerBal.toFixed(2)} ALGO < ${amountAlgo + 0.1} ALGO needed`,
+    );
   }
 
   const result = await algorand.send.payment({
     sender: buyerAddr,
     receiver: sellerAddress,
     amount: algo(amountAlgo),
-    note: `A2A Commerce Payment | ${amountAlgo} ALGO`,
+    note: `AgentDEX Payment | ${amountAlgo} ALGO`,
   });
 
   const txId = result.txIds[0];
@@ -176,7 +203,14 @@ export function getEscrowState(): EscrowState {
 }
 
 export function resetState(): void {
-  escrowState = { status: "idle", buyerAddress: "", sellerAddress: "", amount: 0, txId: "", confirmedRound: 0 };
+  escrowState = {
+    status: "idle",
+    buyerAddress: "",
+    sellerAddress: "",
+    amount: 0,
+    txId: "",
+    confirmedRound: 0,
+  };
   storedAccounts = null;
   algorandClient = null;
 }

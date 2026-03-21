@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import type { OnChainListing } from "@/lib/agents/types";
@@ -18,6 +18,15 @@ export default function MarketplacePage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const hasInitialized = useRef(false);
+
+  const initDemoMarketplace = useCallback(async () => {
+    try {
+      await fetch("/api/init", { method: "POST" });
+    } catch {
+      // Ignore init failures here; fetch endpoint will still return a safe response.
+    }
+  }, []);
 
   const fetchListings = useCallback(async () => {
     setLoading(true);
@@ -41,8 +50,13 @@ export default function MarketplacePage() {
   }, [maxBudget, type]);
 
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
     void fetchListings();
-  }, [fetchListings]);
+    void initDemoMarketplace().then(() => {
+      void fetchListings();
+    });
+  }, [fetchListings, initDemoMarketplace]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

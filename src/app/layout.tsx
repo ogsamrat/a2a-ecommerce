@@ -22,9 +22,9 @@ const labelFont = Share_Tech_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "A2A Commerce | Cyberpunk Agent Marketplace",
+  title: "AgentDEX | Autonomous Agent Marketplace",
   description:
-    "Cyberpunk autonomous commerce interface where buyer agents discover, compare, negotiate, and settle purchases on Algorand.",
+    "Autonomous commerce interface where buyer agents discover, compare, negotiate, and settle purchases on Algorand.",
 };
 
 export default function RootLayout({

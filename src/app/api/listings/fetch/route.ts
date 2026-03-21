@@ -1,6 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIndexer, getNetworkMode } from "@/lib/blockchain/algorand";
+import {
+  getIndexer,
+  getNetworkMode,
+  getStoredAccounts,
+} from "@/lib/blockchain/algorand";
+import { getSeedListings } from "@/lib/blockchain/listings";
 import type { OnChainListing } from "@/lib/agents/types";
+
+const QUERY_TIMEOUT_MS = 1800;
+
+function applyFilters(
+  listings: OnChainListing[],
+  serviceType?: string,
+  maxBudget = Number.POSITIVE_INFINITY,
+): OnChainListing[] {
+  return listings.filter((listing) => {
+    if (serviceType && listing.type !== serviceType) return false;
+    if (listing.price > maxBudget) return false;
+    return true;
+  });
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error("query timeout")), timeoutMs);
+    }),
+  ]);
+}
+
+async function isLocalIndexerReachable(): Promise<boolean> {
+  try {
+    const res = await fetch("http://localhost:8980/health", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1200),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,22 +72,114 @@ export async function GET(req: NextRequest) {
     }
 
     const network = getNetworkMode();
+
+    if (network === "localnet") {
+      const reachable = await isLocalIndexerReachable();
+      if (!reachable) {
+        return NextResponse.json({
+          listings: [],
+          count: 0,
+          network,
+          warning:
+            "Local indexer is not reachable on http://localhost:8980. Start localnet or set ALGORAND_NETWORK=testnet.",
+        });
+      }
+    }
+
     const indexer = getIndexer();
 
     const listings: OnChainListing[] = [];
     const notePrefix = Buffer.from("a2a-listing:").toString("base64");
+    const accountState = getStoredAccounts();
 
-    let query = indexer
-      .searchForTransactions()
-      .notePrefix(notePrefix)
-      .txType("pay");
-
-    if (sellerAddress) {
-      query = query.address(sellerAddress);
+    if (!sellerAddress && !accountState) {
+      const demoListings = applyFilters(
+        getSeedListings(),
+        serviceType,
+        maxBudget,
+      );
+      return NextResponse.json({
+        listings: demoListings,
+        count: demoListings.length,
+        network,
+        source: "demo",
+      });
     }
 
-    const searchResult = await query.limit(50).do();
-    const txns = searchResult.transactions ?? [];
+    const searchAddresses = sellerAddress
+      ? [sellerAddress]
+      : Object.values(accountState?.sellerAddrs ?? {});
+
+    const allTxns: Array<{
+      id?: string;
+      sender?: string;
+      note?: unknown;
+      confirmedRound?: number;
+    }> = [];
+
+    if (searchAddresses.length > 0) {
+      for (const address of searchAddresses) {
+        try {
+          const searchResult = await withTimeout(
+            indexer
+              .searchForTransactions()
+              .address(address)
+              .notePrefix(notePrefix)
+              .txType("pay")
+              .limit(20)
+              .do(),
+            QUERY_TIMEOUT_MS,
+          );
+          allTxns.push(...(searchResult.transactions ?? []));
+        } catch {
+          // skip noisy address query failures and continue with remaining addresses
+        }
+      }
+    } else {
+      try {
+        const searchResult = await withTimeout(
+          indexer
+            .searchForTransactions()
+            .notePrefix(notePrefix)
+            .txType("pay")
+            .limit(25)
+            .do(),
+          QUERY_TIMEOUT_MS,
+        );
+        allTxns.push(...(searchResult.transactions ?? []));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message.toLowerCase() : "";
+        if (
+          message.includes("statement timeout") ||
+          message.includes("searching for transaction") ||
+          message.includes("timeout")
+        ) {
+          const demoListings = applyFilters(
+            getSeedListings(),
+            serviceType,
+            maxBudget,
+          );
+          return NextResponse.json({
+            listings: demoListings,
+            count: demoListings.length,
+            network,
+            source: "demo",
+            warning:
+              "Indexer query timed out; showing demo marketplace listings.",
+          });
+        }
+        throw error;
+      }
+    }
+
+    const seen = new Set<string>();
+    const txns = allTxns.filter((txn) => {
+      const id = txn.id ?? "";
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 
     for (const txn of txns) {
       try {
@@ -80,10 +215,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const finalListings = listings.length
+      ? listings
+      : !sellerAddress
+        ? applyFilters(getSeedListings(), serviceType, maxBudget)
+        : [];
+
     return NextResponse.json({
-      listings,
-      count: listings.length,
+      listings: finalListings,
+      count: finalListings.length,
       network,
+      source: listings.length ? "onchain" : "demo",
     });
   } catch (error) {
     const msg =

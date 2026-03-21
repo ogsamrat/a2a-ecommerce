@@ -2,7 +2,13 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useWallet } from "@txnlab/use-wallet-react";
-import { ArrowRight, Bot, CircleCheckBig, LoaderCircle, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  CircleCheckBig,
+  LoaderCircle,
+  Wallet,
+} from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import type {
   AgentAction,
@@ -34,7 +40,6 @@ export default function ChatPage() {
   const [initialized, setInitialized] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
-  const [autoBuy, setAutoBuy] = useState(true);
 
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [intent, setIntent] = useState<ParsedIntent | null>(null);
@@ -54,13 +59,16 @@ export default function ChatPage() {
           senderAddress: activeAccount.address,
           receiverAddress: deal.sellerAddress,
           amountAlgo: deal.finalPrice,
-          note: `A2A Commerce | ${deal.service} | ${deal.finalPrice} ALGO`,
+          note: `AgentDEX | ${deal.service} | ${deal.finalPrice} ALGO`,
         }),
       });
       const prepareData = await prepareRes.json();
-      if (!prepareRes.ok || prepareData.error) throw parseError(prepareRes, prepareData);
+      if (!prepareRes.ok || prepareData.error)
+        throw parseError(prepareRes, prepareData);
 
-      const unsignedTxn = Uint8Array.from(atob(prepareData.unsignedTxn), (c) => c.charCodeAt(0));
+      const unsignedTxn = Uint8Array.from(atob(prepareData.unsignedTxn), (c) =>
+        c.charCodeAt(0),
+      );
       const signed = (await signTransactions([unsignedTxn]))[0];
       if (!signed) throw new Error("Wallet signature was empty");
       const signedB64 = btoa(String.fromCharCode(...Array.from(signed)));
@@ -71,7 +79,8 @@ export default function ChatPage() {
         body: JSON.stringify({ signedTxn: signedB64 }),
       });
       const submitData = await submitRes.json();
-      if (!submitRes.ok || submitData.error) throw parseError(submitRes, submitData);
+      if (!submitRes.ok || submitData.error)
+        throw parseError(submitRes, submitData);
 
       setEscrow({
         status: "released",
@@ -90,7 +99,8 @@ export default function ChatPage() {
       body: JSON.stringify({ deal }),
     });
     const executeData = await executeRes.json();
-    if (!executeRes.ok || executeData.error) throw parseError(executeRes, executeData);
+    if (!executeRes.ok || executeData.error)
+      throw parseError(executeRes, executeData);
     setEscrow(executeData.escrow ?? emptyEscrow);
   }
 
@@ -116,7 +126,8 @@ export default function ChatPage() {
         body: JSON.stringify({ message }),
       });
       const intentData = await intentRes.json();
-      if (!intentRes.ok || intentData.error) throw parseError(intentRes, intentData);
+      if (!intentRes.ok || intentData.error)
+        throw parseError(intentRes, intentData);
       setIntent(intentData.intent ?? null);
       setActions((prev) => [...prev, ...(intentData.actions ?? [])]);
 
@@ -126,7 +137,8 @@ export default function ChatPage() {
         body: JSON.stringify({ intent: intentData.intent }),
       });
       const discoverData = await discoverRes.json();
-      if (!discoverRes.ok || discoverData.error) throw parseError(discoverRes, discoverData);
+      if (!discoverRes.ok || discoverData.error)
+        throw parseError(discoverRes, discoverData);
       setListings(discoverData.listings ?? []);
       setActions((prev) => [...prev, ...(discoverData.actions ?? [])]);
 
@@ -135,16 +147,20 @@ export default function ChatPage() {
       const negotiateRes = await fetch("/api/negotiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: intentData.intent, listings: discoverData.listings }),
+        body: JSON.stringify({
+          intent: intentData.intent,
+          listings: discoverData.listings,
+        }),
       });
       const negotiateData = await negotiateRes.json();
-      if (!negotiateRes.ok || negotiateData.error) throw parseError(negotiateRes, negotiateData);
+      if (!negotiateRes.ok || negotiateData.error)
+        throw parseError(negotiateRes, negotiateData);
       setActions((prev) => [...prev, ...(negotiateData.actions ?? [])]);
 
       const selected = negotiateData.bestDeal as NegotiationSession | null;
       setBestDeal(selected);
 
-      if (selected && autoBuy) {
+      if (selected) {
         await executeDeal(selected);
       }
     } catch (err) {
@@ -185,23 +201,22 @@ export default function ChatPage() {
               />
             </label>
 
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={autoBuy}
-                onChange={(e) => setAutoBuy(e.target.checked)}
-              />
-              Auto-buy after best deal
-            </label>
-
             <button className="btn-neon" type="submit" disabled={busy}>
-              {busy ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}
+              {busy ? (
+                <LoaderCircle size={14} className="spin" />
+              ) : (
+                <ArrowRight size={14} />
+              )}
               Run Agent Flow
             </button>
           </form>
 
           {error && <p className="status-bad">{error}</p>}
-          {intent && <p className="status-muted">Intent: {intent.serviceType} under {intent.maxBudget} ALGO</p>}
+          {intent && (
+            <p className="status-muted">
+              Intent: {intent.serviceType} under {intent.maxBudget} ALGO
+            </p>
+          )}
           <p className="status-muted">Discovered listings: {discoveredCount}</p>
 
           {bestDeal && (
@@ -230,10 +245,15 @@ export default function ChatPage() {
           <div className="chat-log">
             {actions.map((action) => (
               <p key={action.id}>
-                <span>&gt; {action.agentName.toUpperCase()}:</span> {action.content}
+                <span>&gt; {action.agentName.toUpperCase()}:</span>{" "}
+                {action.content}
               </p>
             ))}
-            {!actions.length && <p className="status-muted">No events yet. Run a prompt to start.</p>}
+            {!actions.length && (
+              <p className="status-muted">
+                No events yet. Run a prompt to start.
+              </p>
+            )}
           </div>
         </article>
       </section>

@@ -4,7 +4,11 @@ import { WalletProvider } from "@txnlab/use-wallet-react";
 import { WalletManager, WalletId, NetworkId } from "@txnlab/use-wallet-react";
 import { useMemo } from "react";
 
-export function AlgorandWalletProvider({ children }: { children: React.ReactNode }) {
+export function AlgorandWalletProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const walletManager = useMemo(() => {
     return new WalletManager({
       wallets: [
@@ -12,7 +16,7 @@ export function AlgorandWalletProvider({ children }: { children: React.ReactNode
         WalletId.DEFLY,
         {
           id: WalletId.LUTE,
-          options: { siteName: "A2A Commerce" },
+          options: { siteName: "AgentDEX" },
         },
       ],
       defaultNetwork: NetworkId.TESTNET,

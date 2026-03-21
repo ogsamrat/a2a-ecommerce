@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, LayoutDashboard, Network, Search, Store } from "lucide-react";
+import { Bot, LayoutDashboard, Search, Store } from "lucide-react";
 import { WalletConnect } from "@/components/wallet-connect";
 
 const NAV_ITEMS = [
@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { href: "/sell", label: "Sell", icon: Store },
   { href: "/marketplace", label: "Marketplace", icon: Search },
   { href: "/chat", label: "Agent Chat", icon: Bot },
-  { href: "/system", label: "System", icon: Network },
 ];
 
 export function AppSidebar() {
@@ -19,8 +18,8 @@ export function AppSidebar() {
   return (
     <aside className="app-sidebar">
       <div className="sidebar-brand">
-        <p className="code-tag">A2A // OPERATOR</p>
-        <h1>CYBER COMMERCE</h1>
+        <p className="code-tag">AGENTDEX // OPERATOR</p>
+        <h1>AGENTDEX</h1>
         <p className="sidebar-copy">
           Autonomous buyer and seller agents with Algorand settlement.
         </p>

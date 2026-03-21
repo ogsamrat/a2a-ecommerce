@@ -21,39 +21,60 @@ const SEED_LISTINGS: Omit<ListingData, "timestamp" | "zkCommitment">[] = [
     service: "CloudMax India Enterprise Storage",
     price: 90,
     seller: "cloudmax",
-    description: "Enterprise-grade cloud storage with Mumbai & Chennai data centers. 99.99% uptime, end-to-end encryption, SOC2 compliant.",
+    description:
+      "Enterprise-grade cloud storage with Mumbai & Chennai data centers. 99.99% uptime, end-to-end encryption, SOC2 compliant.",
   },
   {
     type: "cloud-storage",
     service: "DataVault SME Storage",
     price: 85,
     seller: "datavault",
-    description: "Affordable cloud storage for Indian SMEs. Auto-scaling, pay-as-you-go with Hyderabad servers.",
+    description:
+      "Affordable cloud storage for Indian SMEs. Auto-scaling, pay-as-you-go with Hyderabad servers.",
   },
   {
     type: "api-access",
     service: "QuickAPI Gateway Pro",
     price: 50,
     seller: "quickapi",
-    description: "High-performance API gateway with rate limiting, caching, analytics. Built for fintech & e-commerce.",
+    description:
+      "High-performance API gateway with rate limiting, caching, analytics. Built for fintech & e-commerce.",
   },
   {
     type: "compute",
     service: "BharatCompute GPU Instances",
     price: 120,
     seller: "bharatcompute",
-    description: "NVIDIA A100 GPU clusters in Pune for ML workloads. Per-minute billing, spot pricing available.",
+    description:
+      "NVIDIA A100 GPU clusters in Pune for ML workloads. Per-minute billing, spot pricing available.",
   },
   {
     type: "hosting",
     service: "SecureHost Pro Managed Hosting",
     price: 70,
     seller: "securehost",
-    description: "Managed hosting with DDoS protection, auto-SSL, and CDN. Ideal for Indian startups.",
+    description:
+      "Managed hosting with DDoS protection, auto-SSL, and CDN. Ideal for Indian startups.",
   },
 ];
 
 const sellerSecrets = new Map<string, string>();
+
+export function getSeedListings(): OnChainListing[] {
+  const now = Date.now();
+  return SEED_LISTINGS.map((listing, index) => ({
+    txId: `demo-${listing.seller}-${index + 1}`,
+    sender: listing.seller,
+    type: listing.type,
+    service: listing.service,
+    price: listing.price,
+    seller: listing.seller,
+    description: listing.description,
+    timestamp: now - index * 1000,
+    zkCommitment: undefined,
+    round: 0,
+  }));
+}
 
 export function getSellerSecret(seller: string): string | undefined {
   return sellerSecrets.get(seller);
@@ -70,7 +91,11 @@ export async function postListingsOnChain(): Promise<string[]> {
     const sellerAddr = accounts.sellerAddrs[listing.seller];
     if (!sellerAddr) continue;
 
-    const zk = createZKCommitment(listing.seller, listing.price, listing.description);
+    const zk = createZKCommitment(
+      listing.seller,
+      listing.price,
+      listing.description,
+    );
     sellerSecrets.set(listing.seller, zk.secret);
 
     const noteData: ListingData = {
@@ -115,12 +140,15 @@ export async function fetchListingsFromChain(): Promise<OnChainListing[]> {
           const noteRaw = txn.note;
           if (!noteRaw) continue;
 
-          const noteStr = typeof noteRaw === "string"
-            ? Buffer.from(noteRaw, "base64").toString("utf-8")
-            : new TextDecoder().decode(noteRaw as Uint8Array);
+          const noteStr =
+            typeof noteRaw === "string"
+              ? Buffer.from(noteRaw, "base64").toString("utf-8")
+              : new TextDecoder().decode(noteRaw as Uint8Array);
           if (!noteStr.startsWith(LISTING_PREFIX)) continue;
 
-          const data: ListingData = JSON.parse(noteStr.slice(LISTING_PREFIX.length));
+          const data: ListingData = JSON.parse(
+            noteStr.slice(LISTING_PREFIX.length),
+          );
 
           listings.push({
             txId: txn.id ?? "",
@@ -149,7 +177,7 @@ export async function fetchListingsFromChain(): Promise<OnChainListing[]> {
 export function filterListings(
   listings: OnChainListing[],
   serviceType: string,
-  maxBudget: number
+  maxBudget: number,
 ): OnChainListing[] {
   const normalized = serviceType.toLowerCase().replace(/[\s_-]+/g, "-");
   return listings.filter((l) => {
