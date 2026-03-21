@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { apiRequest, resetApiState } from "@/lib/api/client";
 import type { OnChainListing } from "@/lib/agents/types";
 
 const TYPES = ["", "cloud-storage", "api-access", "compute", "hosting"];
@@ -18,11 +19,12 @@ export default function MarketplacePage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetStatus, setResetStatus] = useState("");
   const hasInitialized = useRef(false);
 
   const initDemoMarketplace = useCallback(async () => {
     try {
-      await fetch("/api/init", { method: "POST" });
+      await apiRequest<{ success?: boolean }>("/api/init", { method: "POST" });
     } catch {
       // Ignore init failures here; fetch endpoint will still return a safe response.
     }
@@ -31,15 +33,15 @@ export default function MarketplacePage() {
   const fetchListings = useCallback(async () => {
     setLoading(true);
     setError("");
+    setResetStatus("");
     try {
       const params = new URLSearchParams();
       if (type) params.set("type", type);
       if (maxBudget.trim()) params.set("maxBudget", maxBudget.trim());
 
-      const res = await fetch(`/api/listings/fetch?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok || data.error)
-        throw new Error(data.error ?? "Failed to fetch listings");
+      const data = await apiRequest<{ listings?: OnChainListing[] }>(
+        `/api/listings/fetch?${params.toString()}`,
+      );
       setListings(data.listings ?? []);
     } catch (err) {
       setError(asError(err));
@@ -67,6 +69,19 @@ export default function MarketplacePage() {
       ),
     );
   }, [listings, query]);
+
+  async function onResetApi() {
+    setResetStatus("Resetting API state...");
+    const result = await resetApiState();
+    if (result.ok) {
+      setResetStatus(
+        result.warning ?? "API reset complete. Refreshing listings...",
+      );
+      await fetchListings();
+      return;
+    }
+    setResetStatus(result.error ?? "Failed to reset API state.");
+  }
 
   return (
     <DashboardShell
@@ -110,7 +125,15 @@ export default function MarketplacePage() {
           </button>
         </div>
 
-        {error && <p className="status-bad">{error}</p>}
+        {error && (
+          <>
+            <p className="status-bad">{error}</p>
+            <button className="btn-outline" type="button" onClick={onResetApi}>
+              Reset & Fix API
+            </button>
+          </>
+        )}
+        {resetStatus && <p className="status-muted">{resetStatus}</p>}
 
         <div className="product-grid">
           {filtered.map((item) => (

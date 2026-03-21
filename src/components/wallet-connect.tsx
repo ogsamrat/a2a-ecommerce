@@ -20,9 +20,14 @@ function isUserClosedWalletModal(error: unknown): boolean {
 
 export function WalletConnect() {
   const { wallets, activeAccount, activeWallet, isReady } = useWallet();
+  const [mounted, setMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [connectError, setConnectError] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!activeAccount?.address) {
@@ -35,7 +40,7 @@ export function WalletConnect() {
       .catch(() => setBalance(null));
   }, [activeAccount?.address]);
 
-  if (!isReady) {
+  if (!mounted || !isReady) {
     return (
       <div className="wallet-trigger" aria-live="polite">
         Loading...

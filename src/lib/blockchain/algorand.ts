@@ -38,10 +38,7 @@ interface AccountInfo {
   balance: number;
 }
 
-interface TransactionResult {
-  txId: string;
-  confirmedRound: number;
-}
+const TESTNET_MIN_BUYER_BALANCE_ALGO = 3;
 
 let storedAccounts: {
   buyerAddr: string;
@@ -115,6 +112,14 @@ export async function initAccounts(): Promise<{
     const account = getTestnetAccountFromEnv();
     buyerAddr = account.addr.toString();
     algorand.setSignerFromAccount(account);
+
+    const buyerBal = await getBalance(buyerAddr);
+    if (buyerBal < TESTNET_MIN_BUYER_BALANCE_ALGO) {
+      throw new Error(
+        `Insufficient balance in AVM_PRIVATE_KEY account (${buyerBal.toFixed(6)} ALGO). ` +
+          `Fund at least ${TESTNET_MIN_BUYER_BALANCE_ALGO} ALGO on TestNet to initialize sellers.`,
+      );
+    }
   } else {
     const dispenser = await algorand.account.localNetDispenser();
     const buyerAccount = algorand.account.random();

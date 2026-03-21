@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useWallet } from "@txnlab/use-wallet-react";
 import {
   AlertTriangle,
@@ -10,6 +10,12 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import {
+  apiRequest,
+  decodeTxnB64,
+  encodeTxnB64,
+  resetApiState,
+} from "@/lib/api/client";
 
 type ListingType = "cloud-storage" | "api-access" | "compute" | "hosting";
 
@@ -48,35 +54,41 @@ function getErrorText(error: unknown): string {
 
 export default function SellPage() {
   const { activeAccount, signTransactions } = useWallet();
+  const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState<ListingForm>(defaultForm);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [resetStatus, setResetStatus] = useState<string>("");
   const [myListings, setMyListings] = useState<ApiListing[]>([]);
   const [loadingListings, setLoadingListings] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const account = mounted ? activeAccount : null;
 
   const canSubmit = useMemo(() => {
     const price = Number(form.price);
     return (
-      !!activeAccount &&
+      !!account &&
       !!form.service.trim() &&
       !!form.description.trim() &&
       Number.isFinite(price) &&
       price > 0
     );
-  }, [activeAccount, form]);
+  }, [account, form]);
 
   async function refreshListings() {
-    if (!activeAccount) return;
+    if (!account) return;
     setLoadingListings(true);
     setError("");
+    setResetStatus("");
     try {
-      const res = await fetch(
-        `/api/listings/fetch?seller=${encodeURIComponent(activeAccount.address)}`,
+      const data = await apiRequest<{ listings?: ApiListing[] }>(
+        `/api/listings/fetch?seller=${encodeURIComponent(account.address)}`,
       );
-      const data = await res.json();
-      if (!res.ok || data.error)
-        throw new Error(data.error ?? "Failed to fetch listings");
       setMyListings(data.listings ?? []);
     } catch (err) {
       setError(getErrorText(err));
@@ -87,52 +99,47 @@ export default function SellPage() {
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!activeAccount) {
+    if (!account) {
       setError("Connect wallet before listing products.");
       return;
     }
 
     setBusy(true);
     setError("");
+    setResetStatus("");
     setMessage("Building unsigned listing transaction...");
 
     try {
-      const createRes = await fetch("/api/listings/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senderAddress: activeAccount.address,
-          type: form.type,
-          service: form.service.trim(),
-          price: Number(form.price),
-          description: form.description.trim(),
-        }),
-      });
-      const createData = await createRes.json();
-      if (!createRes.ok || createData.error) {
-        throw new Error(
-          createData.error ?? "Unable to create listing transaction",
-        );
-      }
-
-      const unsignedBytes = Uint8Array.from(atob(createData.unsignedTxn), (c) =>
-        c.charCodeAt(0),
+      const createData = await apiRequest<{ unsignedTxn: string }>(
+        "/api/listings/create",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senderAddress: account.address,
+            type: form.type,
+            service: form.service.trim(),
+            price: Number(form.price),
+            description: form.description.trim(),
+          }),
+        },
       );
+
+      const unsignedBytes = decodeTxnB64(createData.unsignedTxn);
       setMessage("Waiting for wallet signature...");
       const signed = (await signTransactions([unsignedBytes]))[0];
       if (!signed) throw new Error("Wallet returned an empty signature");
 
-      const signedB64 = btoa(String.fromCharCode(...Array.from(signed)));
+      const signedB64 = encodeTxnB64(signed);
       setMessage("Submitting signed transaction...");
-      const submitRes = await fetch("/api/wallet/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signedTxn: signedB64 }),
-      });
-      const submitData = await submitRes.json();
-      if (!submitRes.ok || submitData.error) {
-        throw new Error(submitData.error ?? "Transaction submission failed");
-      }
+      const submitData = await apiRequest<{ txId: string }>(
+        "/api/wallet/submit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signedTxn: signedB64 }),
+        },
+      );
 
       setMessage(`Listing confirmed: ${submitData.txId}`);
       setForm(defaultForm);
@@ -143,6 +150,19 @@ export default function SellPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onResetApi() {
+    setResetStatus("Resetting API state...");
+    const result = await resetApiState();
+    if (result.ok) {
+      setError("");
+      setMessage("");
+      setResetStatus(result.warning ?? "API reset complete.");
+      await refreshListings();
+      return;
+    }
+    setResetStatus(result.error ?? "Failed to reset API state.");
   }
 
   return (
@@ -225,7 +245,7 @@ export default function SellPage() {
             </button>
           </form>
 
-          {!activeAccount && (
+          {!account && (
             <p className="status-muted">Connect wallet to create listings.</p>
           )}
           {message && (
@@ -234,10 +254,20 @@ export default function SellPage() {
             </p>
           )}
           {error && (
-            <p className="status-bad">
-              <AlertTriangle size={14} /> {error}
-            </p>
+            <>
+              <p className="status-bad">
+                <AlertTriangle size={14} /> {error}
+              </p>
+              <button
+                className="btn-outline"
+                type="button"
+                onClick={onResetApi}
+              >
+                Reset & Fix API
+              </button>
+            </>
           )}
+          {resetStatus && <p className="status-muted">{resetStatus}</p>}
         </article>
 
         <article className="cyber-card terminal-panel">

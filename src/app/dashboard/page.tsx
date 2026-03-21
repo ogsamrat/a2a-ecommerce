@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, Bot, CircleDollarSign, Search, Store } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  CircleDollarSign,
+  Search,
+  ShieldCheck,
+  Store,
+} from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 const cards = [
@@ -20,6 +27,12 @@ const cards = [
     copy: "Buyer specifies intent, agent compares listings, negotiates best deal, and buys.",
     href: "/chat",
     icon: Bot,
+  },
+  {
+    title: "System APIs",
+    copy: "Use premium analytics, reputation contract actions, wallet info, and API recovery tools.",
+    href: "/system",
+    icon: ShieldCheck,
   },
 ];
 

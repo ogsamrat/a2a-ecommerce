@@ -2,14 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, LayoutDashboard, Search, Store } from "lucide-react";
-import { WalletConnect } from "@/components/wallet-connect";
+import dynamic from "next/dynamic";
+import { Bot, LayoutDashboard, Search, ShieldCheck, Store } from "lucide-react";
+
+const WalletConnect = dynamic(
+  () => import("@/components/wallet-connect").then((mod) => mod.WalletConnect),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="wallet-trigger" aria-live="polite">
+        Loading...
+      </div>
+    ),
+  },
+);
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/sell", label: "Sell", icon: Store },
   { href: "/marketplace", label: "Marketplace", icon: Search },
   { href: "/chat", label: "Agent Chat", icon: Bot },
+  { href: "/system", label: "System APIs", icon: ShieldCheck },
 ];
 
 export function AppSidebar() {

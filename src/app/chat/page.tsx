@@ -10,6 +10,12 @@ import {
   Wallet,
 } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import {
+  apiRequest,
+  decodeTxnB64,
+  encodeTxnB64,
+  resetApiState,
+} from "@/lib/api/client";
 import type {
   AgentAction,
   EscrowState,
@@ -27,14 +33,6 @@ const emptyEscrow: EscrowState = {
   confirmedRound: 0,
 };
 
-function parseError(res: Response, data: unknown): Error {
-  const error =
-    typeof data === "object" && data !== null && "error" in data
-      ? String((data as { error?: unknown }).error)
-      : `Request failed (${res.status})`;
-  return new Error(error);
-}
-
 export default function ChatPage() {
   const { activeAccount, signTransactions } = useWallet();
   const [initialized, setInitialized] = useState(false);
@@ -47,40 +45,39 @@ export default function ChatPage() {
   const [bestDeal, setBestDeal] = useState<NegotiationSession | null>(null);
   const [escrow, setEscrow] = useState<EscrowState>(emptyEscrow);
   const [error, setError] = useState("");
+  const [resetStatus, setResetStatus] = useState("");
 
   const discoveredCount = useMemo(() => listings.length, [listings.length]);
 
   async function executeDeal(deal: NegotiationSession) {
     if (activeAccount) {
-      const prepareRes = await fetch("/api/wallet/prepare-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senderAddress: activeAccount.address,
-          receiverAddress: deal.sellerAddress,
-          amountAlgo: deal.finalPrice,
-          note: `AgentDEX | ${deal.service} | ${deal.finalPrice} ALGO`,
-        }),
-      });
-      const prepareData = await prepareRes.json();
-      if (!prepareRes.ok || prepareData.error)
-        throw parseError(prepareRes, prepareData);
-
-      const unsignedTxn = Uint8Array.from(atob(prepareData.unsignedTxn), (c) =>
-        c.charCodeAt(0),
+      const prepareData = await apiRequest<{ unsignedTxn: string }>(
+        "/api/wallet/prepare-payment",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senderAddress: activeAccount.address,
+            receiverAddress: deal.sellerAddress,
+            amountAlgo: deal.finalPrice,
+            note: `AgentDEX | ${deal.service} | ${deal.finalPrice} ALGO`,
+          }),
+        },
       );
+
+      const unsignedTxn = decodeTxnB64(prepareData.unsignedTxn);
       const signed = (await signTransactions([unsignedTxn]))[0];
       if (!signed) throw new Error("Wallet signature was empty");
-      const signedB64 = btoa(String.fromCharCode(...Array.from(signed)));
+      const signedB64 = encodeTxnB64(signed);
 
-      const submitRes = await fetch("/api/wallet/submit", {
+      const submitData = await apiRequest<{
+        txId: string;
+        confirmedRound: number;
+      }>("/api/wallet/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signedTxn: signedB64 }),
       });
-      const submitData = await submitRes.json();
-      if (!submitRes.ok || submitData.error)
-        throw parseError(submitRes, submitData);
 
       setEscrow({
         status: "released",
@@ -93,58 +90,63 @@ export default function ChatPage() {
       return;
     }
 
-    const executeRes = await fetch("/api/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deal }),
-    });
-    const executeData = await executeRes.json();
-    if (!executeRes.ok || executeData.error)
-      throw parseError(executeRes, executeData);
+    const executeData = await apiRequest<{ escrow?: EscrowState }>(
+      "/api/execute",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal }),
+      },
+    );
     setEscrow(executeData.escrow ?? emptyEscrow);
   }
 
   async function runPipeline(message: string) {
     setBusy(true);
     setError("");
+    setResetStatus("");
     setActions([]);
     setEscrow(emptyEscrow);
     setBestDeal(null);
 
     try {
       if (!initialized) {
-        const initRes = await fetch("/api/init", { method: "POST" });
-        const initData = await initRes.json();
-        if (!initRes.ok || initData.error) throw parseError(initRes, initData);
+        const initData = await apiRequest<{ actions?: AgentAction[] }>(
+          "/api/init",
+          { method: "POST" },
+        );
         setInitialized(true);
         setActions((prev) => [...prev, ...(initData.actions ?? [])]);
       }
 
-      const intentRes = await fetch("/api/intent", {
+      const intentData = await apiRequest<{
+        intent?: ParsedIntent;
+        actions?: AgentAction[];
+      }>("/api/intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
       });
-      const intentData = await intentRes.json();
-      if (!intentRes.ok || intentData.error)
-        throw parseError(intentRes, intentData);
       setIntent(intentData.intent ?? null);
       setActions((prev) => [...prev, ...(intentData.actions ?? [])]);
 
-      const discoverRes = await fetch("/api/discover", {
+      const discoverData = await apiRequest<{
+        listings?: OnChainListing[];
+        actions?: AgentAction[];
+      }>("/api/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent: intentData.intent }),
       });
-      const discoverData = await discoverRes.json();
-      if (!discoverRes.ok || discoverData.error)
-        throw parseError(discoverRes, discoverData);
       setListings(discoverData.listings ?? []);
       setActions((prev) => [...prev, ...(discoverData.actions ?? [])]);
 
       if (!(discoverData.listings ?? []).length) return;
 
-      const negotiateRes = await fetch("/api/negotiate", {
+      const negotiateData = await apiRequest<{
+        bestDeal: NegotiationSession | null;
+        actions?: AgentAction[];
+      }>("/api/negotiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -152,9 +154,6 @@ export default function ChatPage() {
           listings: discoverData.listings,
         }),
       });
-      const negotiateData = await negotiateRes.json();
-      if (!negotiateRes.ok || negotiateData.error)
-        throw parseError(negotiateRes, negotiateData);
       setActions((prev) => [...prev, ...(negotiateData.actions ?? [])]);
 
       const selected = negotiateData.bestDeal as NegotiationSession | null;
@@ -175,6 +174,25 @@ export default function ChatPage() {
     const message = prompt.trim();
     if (!message || busy) return;
     await runPipeline(message);
+  }
+
+  async function onResetApi() {
+    setResetStatus("Resetting API state...");
+    const result = await resetApiState();
+    if (result.ok) {
+      setInitialized(true);
+      setError("");
+      setActions([]);
+      setIntent(null);
+      setListings([]);
+      setBestDeal(null);
+      setEscrow(emptyEscrow);
+      setResetStatus(
+        result.warning ?? "API reset complete. Run the flow again.",
+      );
+      return;
+    }
+    setResetStatus(result.error ?? "Unable to reset API state.");
   }
 
   return (
@@ -211,7 +229,19 @@ export default function ChatPage() {
             </button>
           </form>
 
-          {error && <p className="status-bad">{error}</p>}
+          {error && (
+            <>
+              <p className="status-bad">{error}</p>
+              <button
+                className="btn-outline"
+                type="button"
+                onClick={onResetApi}
+              >
+                Reset & Fix API
+              </button>
+            </>
+          )}
+          {resetStatus && <p className="status-muted">{resetStatus}</p>}
           {intent && (
             <p className="status-muted">
               Intent: {intent.serviceType} under {intent.maxBudget} ALGO
