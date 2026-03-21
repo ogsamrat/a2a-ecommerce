@@ -1133,3 +1133,89 @@ p {
   background-color: var(--border);
   border-radius: 10px;
 }
+:root {
+  --text-1: #ffffff;
+  --text-2: #e0e0e0;
+  --text-3: #a0a0a0;
+  --text-4: #606060;
+  --bg-card: #171822; /* Same as --card */
+  --bg-surface: #0f1016;
+  --blue-bright: #2ef0a1; /* A vivid modern green replacing cyan */
+  --blue-border: #00c978;
+  --blue-glow: rgba(46, 240, 161, 0.1);
+  --green: #00ff88;
+  --green-border: rgba(0, 255, 136, 0.3);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+.trae-input {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  color: var(--text-1);
+  outline: none;
+  font-family: inherit;
+  font-size: 0.875rem;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+.trae-input:focus {
+  outline: none;
+  border-color: var(--border); /* Keeps the blackish outline */
+}
+.trae-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: inherit;
+}
+.badge-white {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.badge-blue {
+  background: rgba(46, 240, 161, 0.1);
+  color: var(--blue-bright);
+  border: 1px solid rgba(46, 240, 161, 0.2);
+}
+.badge-green {
+  background: rgba(0, 255, 136, 0.1);
+  color: var(--green);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.anim-fade-up {
+  animation: fadeUp 0.4s ease-out forwards;
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.anim-spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

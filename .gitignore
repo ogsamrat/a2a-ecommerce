@@ -7,4 +7,4 @@ dist/
 .DS_Store
 Thumbs.db
 tsconfig.tsbuildinfo
-remembered-listings.json
+artifacts/runtime/remembered-listings.json

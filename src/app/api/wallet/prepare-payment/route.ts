@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
       return NextResponse.json(
-        { error: "amountAlgo must be a positive number" },
+        { error: "amountAlgo must be a positive number or zero" },
         { status: 400 },
       );
     }

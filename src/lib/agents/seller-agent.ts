@@ -2,24 +2,34 @@ import type { OnChainListing, X402Message } from "@/lib/agents/types";
 import { createX402Message } from "@/lib/a2a/messaging";
 import { generateNegotiationResponse } from "@/lib/ai/groq";
 
-const STRATEGIES: Record<string, { concession: number; minDiscount: number }> = {
-  cloudmax: { concession: 0.08, minDiscount: 0.25 },
-  datavault: { concession: 0.12, minDiscount: 0.18 },
-  quickapi: { concession: 0.18, minDiscount: 0.30 },
-  bharatcompute: { concession: 0.10, minDiscount: 0.20 },
-  securehost: { concession: 0.15, minDiscount: 0.28 },
-};
+const STRATEGIES: Record<string, { concession: number; minDiscount: number }> =
+  {
+    cloudmax: { concession: 0.08, minDiscount: 0.25 },
+    datavault: { concession: 0.12, minDiscount: 0.18 },
+    quickapi: { concession: 0.18, minDiscount: 0.3 },
+    bharatcompute: { concession: 0.1, minDiscount: 0.2 },
+    securehost: { concession: 0.15, minDiscount: 0.28 },
+  };
 
 export async function sellerRespond(
   listing: OnChainListing,
   buyerOffer: number,
   round: number,
-  buyerAgentId: string
+  buyerAgentId: string,
 ): Promise<{ message: X402Message; counterPrice: number; accepted: boolean }> {
-  const strategy = STRATEGIES[listing.seller] ?? { concession: 0.12, minDiscount: 0.20 };
-  const minPrice = Math.round(listing.price * (1 - strategy.minDiscount));
-  const concessionPerRound = (listing.price - minPrice) * strategy.concession * round;
-  let counterPrice = Math.max(minPrice, Math.round(listing.price - concessionPerRound));
+  const strategy = STRATEGIES[listing.seller] ?? {
+    concession: 0.12,
+    minDiscount: 0.2,
+  };
+  const minPrice = Number(
+    (listing.price * (1 - strategy.minDiscount)).toFixed(3),
+  );
+  const concessionPerRound =
+    (listing.price - minPrice) * strategy.concession * round;
+  let counterPrice = Math.max(
+    minPrice,
+    Number((listing.price - concessionPerRound).toFixed(3)),
+  );
 
   let accepted = false;
 
@@ -28,8 +38,11 @@ export async function sellerRespond(
     accepted = true;
   }
 
-  if (Math.abs(buyerOffer - counterPrice) <= counterPrice * 0.05 && buyerOffer >= minPrice) {
-    counterPrice = Math.round((buyerOffer + counterPrice) / 2);
+  if (
+    Math.abs(buyerOffer - counterPrice) <= counterPrice * 0.05 &&
+    buyerOffer >= minPrice
+  ) {
+    counterPrice = Number(((buyerOffer + counterPrice) / 2).toFixed(3));
     accepted = true;
   }
 
@@ -41,7 +54,7 @@ export async function sellerRespond(
     listing.price,
     counterPrice,
     round,
-    accepted
+    accepted,
   );
 
   const message = createX402Message(
@@ -52,7 +65,7 @@ export async function sellerRespond(
     listing.service,
     counterPrice,
     responseText,
-    round
+    round,
   );
 
   return { message, counterPrice, accepted };

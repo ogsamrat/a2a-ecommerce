@@ -115,9 +115,16 @@ export function filterListings(
   maxBudget: number,
 ): OnChainListing[] {
   const normalized = serviceType.toLowerCase().replace(/[\s_-]+/g, "-");
+
+  if (normalized === "all" || normalized === "unknown") {
+    return listings.filter((l) => l.price <= maxBudget);
+  }
+
   return listings.filter((l) => {
+    const rawSearch = serviceType.toLowerCase().trim();
     const typeMatch =
       l.type === normalized ||
+      l.service.toLowerCase().includes(rawSearch) ||
       l.service.toLowerCase().includes(normalized.replace(/-/g, " ")) ||
       l.type.includes(normalized.split("-")[0]);
     return typeMatch && l.price <= maxBudget;

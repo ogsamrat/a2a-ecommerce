@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { apiRequest, resetApiState } from "@/lib/api/client";
@@ -28,7 +28,6 @@ export default function MarketplacePage() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [resetStatus, setResetStatus] = useState("");
-  const hasInitialized = useRef(false);
 
   const loadReputations = useCallback(async (items: OnChainListing[]) => {
     const agents = [
@@ -86,9 +85,14 @@ export default function MarketplacePage() {
   }, [loadReputations, maxBudget, type]);
 
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
     void fetchListings();
+  }, [fetchListings]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void fetchListings();
+    }, 15000); // 15 seconds
+    return () => clearInterval(interval);
   }, [fetchListings]);
 
   const filtered = useMemo(() => {
@@ -157,10 +161,7 @@ export default function MarketplacePage() {
             inputMode="decimal"
           />
 
-          <button className="btn-outline" type="button" onClick={fetchListings}>
-            <RefreshCw size={14} className={loading ? "spin" : ""} />
-            Refresh
-          </button>
+          {/* Refresh button removed in favor of auto-refresh/on-type updates */}
         </div>
 
         {error && (

@@ -13,7 +13,10 @@ export async function POST(req: NextRequest) {
     };
 
     if (!intent || !listings?.length) {
-      return NextResponse.json({ error: "Intent and listings are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Intent and listings are required" },
+        { status: 400 },
+      );
     }
 
     const { sessions, actions } = await runNegotiations(listings, intent);
@@ -25,7 +28,7 @@ export async function POST(req: NextRequest) {
         bestDeal.service,
         bestDeal.finalPrice,
         bestDeal.originalPrice,
-        bestDeal.rounds
+        bestDeal.rounds,
       );
 
       actions.push(
@@ -34,18 +37,24 @@ export async function POST(req: NextRequest) {
           "Buyer Agent",
           "result",
           `**Best Deal Found!**\n\n${summary}\n\n` +
-          `**Seller:** ${bestDeal.sellerName}\n` +
-          `**Service:** ${bestDeal.service}\n` +
-          `**Final Price:** ${bestDeal.finalPrice} ALGO\n` +
-          `**Original:** ${bestDeal.originalPrice} ALGO\n` +
-          `**ZK Verified:** ${bestDeal.zkVerified ? "Yes" : "No"}\n` +
-          `**On-Chain Listing TX:** \`${bestDeal.listingTxId.slice(0, 20)}...\``,
-          { bestDeal }
-        )
+            `**Seller:** ${bestDeal.sellerName}\n` +
+            `**Service:** ${bestDeal.service}\n` +
+            `**Final Price:** ${bestDeal.finalPrice} ALGO\n` +
+            `**Original:** ${bestDeal.originalPrice} ALGO\n` +
+            `**Seller Reputation:** ${bestDeal.sellerReputation ?? 0}/100\n` +
+            `**ZK Verified:** ${bestDeal.zkVerified ? "Yes" : "No"}\n` +
+            `**On-Chain Listing TX:** \`${bestDeal.listingTxId.slice(0, 20)}...\``,
+          { bestDeal },
+        ),
       );
     } else {
       actions.push(
-        createAction("buyer", "Buyer Agent", "result", "No deals could be reached within your budget.")
+        createAction(
+          "buyer",
+          "Buyer Agent",
+          "result",
+          "No deals could be reached within your budget.",
+        ),
       );
     }
 

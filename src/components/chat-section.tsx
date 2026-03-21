@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useWallet } from "@txnlab/use-wallet-react";
 import { ChatInterface } from "@/components/chat-interface";
 import { NegotiationTimeline } from "@/components/negotiation-timeline";
@@ -25,13 +25,6 @@ import type {
   NegotiationSession,
   EscrowState,
 } from "@/lib/agents/types";
-
-const SUGGESTIONS = [
-  "Buy cloud storage under 1 ALGO",
-  "Find cheapest API access",
-  "Get compute under 2 ALGO",
-  "Best hosting deal available",
-];
 
 const EMPTY_ESCROW: EscrowState = {
   status: "idle",
@@ -66,10 +59,18 @@ const PHASE_LABEL: Record<string, { text: string; color: string }> = {
 
 export function ChatSection() {
   const { activeAccount, signTransactions } = useWallet();
+  const [mounted, setMounted] = useState(false);
+
+  const currentAccount = mounted ? activeAccount : null;
+
   const [state, setState] = useState<SessionState>(INIT_STATE);
   const [loading, setLoading] = useState(false);
   const [inited, setInited] = useState(false);
   const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   /* ── Helpers ── */
   const addActions = useCallback(
@@ -207,7 +208,7 @@ export function ChatSection() {
     }
 
     if (state.autoBuy) {
-      await execDeal(nr.bestDeal);
+      await execDeal(nr.bestDeal, true);
     } else {
       addActions([
         {
@@ -215,7 +216,7 @@ export function ChatSection() {
           agent: "buyer",
           agentName: "Buyer Agent",
           type: "result",
-          content: activeAccount
+          content: currentAccount
             ? `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Ready to execute — confirm below.`
             : `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Connect your wallet to sign.`,
           timestamp: new Date().toISOString(),
@@ -226,10 +227,10 @@ export function ChatSection() {
     setLoading(false);
   }
 
-  async function execDeal(deal: NegotiationSession) {
+  async function execDeal(deal: NegotiationSession, isAutoBuy = false) {
     setLoading(true);
     setState((p) => ({ ...p, phase: "executing" }));
-    if (activeAccount) await execWallet(deal);
+    if (!isAutoBuy && currentAccount) await execWallet(deal);
     else await execServer(deal);
     setState((p) => ({ ...p, phase: "completed" }));
     setLoading(false);
@@ -246,7 +247,7 @@ export function ChatSection() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            senderAddress: activeAccount!.address,
+            senderAddress: currentAccount!.address,
             receiverAddress: deal.sellerAddress,
             amountAlgo: deal.finalPrice,
             note: `A2A | ${deal.service}`,
@@ -271,7 +272,7 @@ export function ChatSection() {
       if (sub.error) throw new Error(sub.error);
       const escrow: EscrowState = {
         status: "released",
-        buyerAddress: activeAccount!.address,
+        buyerAddress: currentAccount!.address,
         sellerAddress: deal.sellerAddress,
         amount: deal.finalPrice,
         txId: sub.txId,
@@ -393,7 +394,7 @@ export function ChatSection() {
               </p>
               <p style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
                 {state.selectedDeal!.finalPrice} ALGO —{" "}
-                {activeAccount ? "wallet signature required" : "server demo"}
+                {currentAccount ? "wallet signature required" : "server demo"}
               </p>
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -402,15 +403,17 @@ export function ChatSection() {
                 onClick={() =>
                   setState((p) => ({ ...p, selectedDeal: null, phase: "idle" }))
                 }
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <X size={12} /> Cancel
               </button>
               <button
                 className="btn-primary"
                 onClick={() => execDeal(state.selectedDeal!)}
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <CheckCircle size={13} />
-                {activeAccount ? "Confirm & Sign" : "Confirm & Pay"}
+                {currentAccount ? "Confirm & Sign" : "Confirm & Pay"}
               </button>
             </div>
           </div>
@@ -424,35 +427,6 @@ export function ChatSection() {
             flexShrink: 0,
           }}
         >
-          {state.phase === "idle" && (
-            <div
-              style={{
-                padding: "10px 16px 0",
-                display: "flex",
-                gap: 6,
-                overflowX: "auto",
-              }}
-            >
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  className="btn-ghost"
-                  onClick={() => submit(s)}
-                  style={{
-                    flexShrink: 0,
-                    background: "var(--bg-card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "5px 10px",
-                    fontSize: "0.75rem",
-                  }}
-                >
-                  <Sparkles size={11} color="var(--blue-bright)" />
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
           <div style={{ padding: "10px 16px 14px", display: "flex", gap: 10 }}>
             <input
               className="trae-input"
@@ -482,7 +456,13 @@ export function ChatSection() {
                 !msg.trim() ||
                 !["idle", "completed", "error"].includes(state.phase)
               }
-              style={{ flexShrink: 0, padding: "0.5rem 1rem" }}
+              style={{
+                flexShrink: 0,
+                padding: "0.5rem 1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
             >
               {loading ? (
                 <div
@@ -506,7 +486,6 @@ export function ChatSection() {
 
       {/* ─── Right sidebar ─── */}
       <aside
-        className="scroll"
         style={{
           width: 280,
           borderLeft: "1px solid var(--border)",
@@ -558,7 +537,11 @@ export function ChatSection() {
             >
               {state.autoBuy ? (
                 <>
-                  <ToggleRight size={20} color="var(--blue-bright)" />
+                  <ToggleRight
+                    size={20}
+                    color="var(--blue-bright)"
+                    fill="currentColor"
+                  />
                   <span
                     style={{
                       color: "var(--blue-bright)",
@@ -592,10 +575,12 @@ export function ChatSection() {
             display: "flex",
             flexDirection: "column",
             gap: 14,
+            overflowY: "auto",
+            minHeight: 0,
           }}
         >
           {/* Wallet */}
-          {activeAccount && (
+          {currentAccount && (
             <div
               style={{
                 background: "rgba(43,127,255,0.06)",
@@ -625,7 +610,7 @@ export function ChatSection() {
                   lineHeight: 1.5,
                 }}
               >
-                {activeAccount.address}
+                {currentAccount.address}
               </p>
             </div>
           )}

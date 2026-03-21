@@ -8,16 +8,18 @@ export default function ChatPage() {
     <DashboardShell
       title="Agent Chat"
       subtitle="Describe what to buy and let the agent discover, compare, negotiate, and execute the purchase."
+      fixedHeight
     >
       <div
         style={{
           flex: 1,
           display: "flex",
+          flexDirection: "column",
           overflow: "hidden",
-          height: "calc(100vh - 220px)", minHeight: "500px",
           borderRadius: "var(--radius-lg)",
           border: "1px solid var(--border)",
           background: "var(--bg-card)",
+          minHeight: 0, // allows it to shrink instead of overflowing
         }}
       >
         <ChatSection />

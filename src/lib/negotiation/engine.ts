@@ -10,18 +10,21 @@ import { sellerRespond } from "@/lib/agents/seller-agent";
 import { verifyZKCommitment } from "@/lib/blockchain/zk";
 import { getSellerSecret } from "@/lib/blockchain/listings";
 import { createAction } from "@/lib/a2a/messaging";
+import { getAgentReputation } from "@/lib/blockchain/reputation";
 
-const MAX_ROUNDS = 2;
+const MAX_ROUNDS = 3;
 
 async function negotiateWithListing(
   listing: OnChainListing,
-  intent: ParsedIntent
+  intent: ParsedIntent,
 ): Promise<{ session: NegotiationSession; actions: AgentAction[] }> {
   const messages: X402Message[] = [];
   const actions: AgentAction[] = [];
   let accepted = false;
   let finalPrice = listing.price;
   let lastSellerPrice = listing.price;
+
+  const sellerReputation = await getAgentReputation(listing.sender);
 
   let zkVerified = false;
   if (listing.zkCommitment) {
@@ -32,7 +35,7 @@ async function negotiateWithListing(
         secret,
         listing.seller,
         listing.price,
-        listing.description
+        listing.description,
       );
     }
     actions.push(
@@ -41,8 +44,8 @@ async function negotiateWithListing(
         "Buyer Agent",
         "verification",
         `SHA-256 ZK for **${listing.seller}**: ${zkVerified ? "Verified ✓" : "Unverified"} (commitment: \`${listing.zkCommitment.slice(0, 24)}...\`)`,
-        { zkVerified, commitment: listing.zkCommitment }
-      )
+        { zkVerified, commitment: listing.zkCommitment },
+      ),
     );
   }
 
@@ -51,8 +54,8 @@ async function negotiateWithListing(
       "buyer",
       "Buyer Agent",
       "thinking",
-      `Evaluating listing from **${listing.seller}** — "${listing.service}" at **${listing.price} ALGO** (on-chain TX: \`${listing.txId.slice(0, 16)}...\`)`
-    )
+      `Evaluating listing from **${listing.seller}** (Reputation: ${sellerReputation}/100) — "${listing.service}" at **${listing.price} ALGO** (on-chain TX: \`${listing.txId.slice(0, 16)}...\`)`,
+    ),
   );
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
@@ -64,7 +67,12 @@ async function negotiateWithListing(
       buyerMsg = offer.message;
       buyerOffer = offer.offerPrice;
     } else {
-      const counter = createCounterOffer(listing, lastSellerPrice, intent, round);
+      const counter = createCounterOffer(
+        listing,
+        lastSellerPrice,
+        intent,
+        round,
+      );
       buyerMsg = counter.message;
       buyerOffer = counter.offerPrice;
 
@@ -73,11 +81,17 @@ async function negotiateWithListing(
         accepted = true;
         finalPrice = buyerOffer;
         actions.push(
-          createAction("buyer", "Buyer Agent", "negotiation", buyerMsg.payload.message, {
-            price: buyerOffer,
-            round,
-            action: "accept",
-          })
+          createAction(
+            "buyer",
+            "Buyer Agent",
+            "negotiation",
+            buyerMsg.payload.message,
+            {
+              price: buyerOffer,
+              round,
+              action: "accept",
+            },
+          ),
         );
         break;
       }
@@ -85,30 +99,52 @@ async function negotiateWithListing(
 
     messages.push(buyerMsg);
     actions.push(
-      createAction("buyer", "Buyer Agent", "negotiation", buyerMsg.payload.message, {
-        price: buyerOffer,
-        round,
-        action: buyerMsg.action,
-      })
+      createAction(
+        "buyer",
+        "Buyer Agent",
+        "negotiation",
+        buyerMsg.payload.message,
+        {
+          price: buyerOffer,
+          round,
+          action: buyerMsg.action,
+        },
+      ),
     );
 
-    const sellerRes = await sellerRespond(listing, buyerOffer, round, "buyer-agent");
+    const sellerRes = await sellerRespond(
+      listing,
+      buyerOffer,
+      round,
+      "buyer-agent",
+    );
     messages.push(sellerRes.message);
     lastSellerPrice = sellerRes.counterPrice;
 
     actions.push(
-      createAction("seller", listing.seller, "negotiation", sellerRes.message.payload.message, {
-        price: sellerRes.counterPrice,
-        round,
-        action: sellerRes.message.action,
-      })
+      createAction(
+        "seller",
+        listing.seller,
+        "negotiation",
+        sellerRes.message.payload.message,
+        {
+          price: sellerRes.counterPrice,
+          round,
+          action: sellerRes.message.action,
+        },
+      ),
     );
 
     if (sellerRes.accepted) {
       accepted = true;
       finalPrice = sellerRes.counterPrice;
       actions.push(
-        createAction("system", "System", "result", `Deal with **${listing.seller}** at **${finalPrice} ALGO**`)
+        createAction(
+          "system",
+          "System",
+          "result",
+          `Deal with **${listing.seller}** at **${finalPrice} ALGO**`,
+        ),
       );
       break;
     }
@@ -132,11 +168,17 @@ async function negotiateWithListing(
       };
       messages.push(acceptMsg);
       actions.push(
-        createAction("buyer", "Buyer Agent", "negotiation", acceptMsg.payload.message, {
-          price: lastSellerPrice,
-          round,
-          action: "accept",
-        })
+        createAction(
+          "buyer",
+          "Buyer Agent",
+          "negotiation",
+          acceptMsg.payload.message,
+          {
+            price: lastSellerPrice,
+            round,
+            action: "accept",
+          },
+        ),
       );
     }
   }
@@ -153,6 +195,7 @@ async function negotiateWithListing(
       messages,
       zkVerified,
       rounds: messages.length,
+      sellerReputation,
     },
     actions,
   };
@@ -160,7 +203,7 @@ async function negotiateWithListing(
 
 export async function runNegotiations(
   listings: OnChainListing[],
-  intent: ParsedIntent
+  intent: ParsedIntent,
 ): Promise<{ sessions: NegotiationSession[]; actions: AgentAction[] }> {
   const allSessions: NegotiationSession[] = [];
   const allActions: AgentAction[] = [];
@@ -170,8 +213,8 @@ export async function runNegotiations(
       "buyer",
       "Buyer Agent",
       "thinking",
-      `Starting x402-style negotiations with **${listings.length}** on-chain listing(s) for "${intent.serviceType}" (budget: ${intent.maxBudget} ALGO)`
-    )
+      `Starting x402-style negotiations with **${listings.length}** on-chain listing(s) for "${intent.serviceType}" (budget: ${intent.maxBudget} ALGO)`,
+    ),
   );
 
   for (const listing of listings) {
@@ -186,8 +229,8 @@ export async function runNegotiations(
       "buyer",
       "Buyer Agent",
       "thinking",
-      `Negotiations complete: **${acceptedCount}/${listings.length}** deals reached. Selecting best offer...`
-    )
+      `Negotiations complete: **${acceptedCount}/${listings.length}** deals reached. Selecting best offer...`,
+    ),
   );
 
   return { sessions: allSessions, actions: allActions };

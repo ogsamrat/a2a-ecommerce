@@ -16,12 +16,12 @@ Extract structured data from the user's message. Respond ONLY with valid JSON, n
 
 Output format:
 {
-  "serviceType": "cloud-storage" | "api-access" | "compute" | "hosting" | string,
+  "serviceType": string, // Extract the exact product/service name the user wants to buy (e.g. "netflix", "cloud-storage", "spotify", "hosting"). If the user asks for a specific brand or item, use that.
   "maxBudget": number (in ALGO, default 100 if not specified),
   "preferences": string[] (extracted preferences like "cheap", "reliable", "fast", "encrypted")
 }
 
-Map common terms:
+Map common terms (but prefer exact brand/product names if specified like "netflix"):
 - "cloud", "storage", "backup" -> "cloud-storage"
 - "API", "gateway", "endpoint" -> "api-access"
 - "compute", "GPU", "server", "VM" -> "compute"
@@ -35,16 +35,21 @@ Map common terms:
 
   const raw = completion.choices[0]?.message?.content ?? "{}";
   try {
-    const parsed = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+    const parsed = JSON.parse(
+      raw
+        .replace(/```json?\n?/g, "")
+        .replace(/```/g, "")
+        .trim(),
+    );
     return {
-      serviceType: parsed.serviceType ?? "cloud-storage",
+      serviceType: parsed.serviceType ?? "unknown",
       maxBudget: parsed.maxBudget ?? 100,
       preferences: parsed.preferences ?? [],
       rawMessage: message,
     };
   } catch {
     return {
-      serviceType: "cloud-storage",
+      serviceType: "unknown",
       maxBudget: 100,
       preferences: [],
       rawMessage: message,
@@ -60,7 +65,7 @@ export async function generateNegotiationResponse(
   sellerBase: number,
   counterPrice: number,
   round: number,
-  isAccepting: boolean
+  isAccepting: boolean,
 ): Promise<string> {
   const completion = await groq.chat.completions.create({
     model: MODEL,
@@ -82,7 +87,10 @@ Strategy: ${strategy === "aggressive" ? "Hold firm on price, make small concessi
     max_tokens: 100,
   });
 
-  return completion.choices[0]?.message?.content ?? `I can offer this at ${counterPrice} ALGO.`;
+  return (
+    completion.choices[0]?.message?.content ??
+    `I can offer this at ${counterPrice} ALGO.`
+  );
 }
 
 export async function generateDealSummary(
@@ -90,7 +98,7 @@ export async function generateDealSummary(
   serviceType: string,
   finalPrice: number,
   originalPrice: number,
-  rounds: number
+  rounds: number,
 ): Promise<string> {
   const completion = await groq.chat.completions.create({
     model: MODEL,

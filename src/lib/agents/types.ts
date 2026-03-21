@@ -9,6 +9,7 @@ export interface OnChainListing {
   timestamp: number;
   zkCommitment?: string;
   round: number;
+  reputationScore?: number;
 }
 
 export interface ParsedIntent {
@@ -45,6 +46,7 @@ export interface NegotiationSession {
   messages: X402Message[];
   zkVerified: boolean;
   rounds: number;
+  sellerReputation?: number;
 }
 
 export interface EscrowState {
@@ -60,7 +62,14 @@ export interface AgentAction {
   id: string;
   agent: "buyer" | "seller" | "system" | "user";
   agentName: string;
-  type: "thinking" | "message" | "negotiation" | "transaction" | "result" | "discovery" | "verification";
+  type:
+    | "thinking"
+    | "message"
+    | "negotiation"
+    | "transaction"
+    | "result"
+    | "discovery"
+    | "verification";
   content: string;
   data?: Record<string, unknown>;
   timestamp: string;
@@ -74,6 +83,14 @@ export interface SessionState {
   selectedDeal: NegotiationSession | null;
   escrow: EscrowState;
   actions: AgentAction[];
-  phase: "idle" | "parsing" | "initializing" | "discovering" | "negotiating" | "executing" | "completed" | "error";
+  phase:
+    | "idle"
+    | "parsing"
+    | "initializing"
+    | "discovering"
+    | "negotiating"
+    | "executing"
+    | "completed"
+    | "error";
   autoBuy: boolean;
 }
