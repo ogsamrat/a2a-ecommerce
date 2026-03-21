@@ -3,9 +3,9 @@
 :root {
   --background: #0a0a0f;
   --foreground: #e0e0e0;
-  --card: #12121a;
+  --card: #171822;
   --muted: #1c1c2e;
-  --muted-foreground: #6b7280;
+  --muted-foreground: #8a93a7;
   --accent: #00ff88;
   --accent-secondary: #ff00ff;
   --accent-tertiary: #00d4ff;
@@ -49,15 +49,15 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 40;
+  z-index: 0;
   background: repeating-linear-gradient(
     0deg,
     transparent,
     transparent 2px,
-    rgb(0 0 0 / 30%) 2px,
-    rgb(0 0 0 / 30%) 4px
+    rgb(0 0 0 / 18%) 2px,
+    rgb(0 0 0 / 18%) 4px
   );
-  opacity: 0.3;
+  opacity: 0.16;
 }
 
 body::after {
@@ -65,11 +65,12 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 35;
+  z-index: 0;
   background-image:
-    linear-gradient(rgb(0 255 136 / 4%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(0 255 136 / 4%) 1px, transparent 1px);
-  background-size: 50px 50px;
+    linear-gradient(rgb(0 255 136 / 2%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(0 255 136 / 2%) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.5;
 }
 
 a {
@@ -339,10 +340,10 @@ p {
 }
 
 .holographic-panel {
-  background: rgb(28 28 46 / 30%);
-  border-color: rgb(0 255 136 / 30%);
+  background: linear-gradient(180deg, rgb(22 24 36 / 92%), rgb(16 18 28 / 94%));
+  border-color: rgb(0 255 136 / 42%);
   box-shadow: var(--box-shadow-neon-sm);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(2px);
 }
 
 .terminal-panel {
@@ -536,7 +537,7 @@ p {
 
 .chat-log p {
   border: 1px solid var(--border);
-  background: rgb(10 10 15 / 70%);
+  background: rgb(14 15 23 / 92%);
   padding: 0.7rem;
   min-height: 44px;
 }
@@ -961,7 +962,7 @@ p {
 
 .list-item {
   border: 1px solid var(--border);
-  background: rgb(10 10 15 / 70%);
+  background: rgb(14 15 23 / 90%);
   padding: 0.7rem;
   display: grid;
   gap: 0.35rem;
