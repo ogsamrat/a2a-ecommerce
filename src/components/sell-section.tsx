@@ -28,7 +28,7 @@ const TYPES = [
 type SvcType = (typeof TYPES)[number]["value"];
 
 interface Form {
-  type: SvcType;
+  type: SvcType | "";
   service: string;
   price: string;
   description: string;
@@ -64,7 +64,7 @@ const TYPE_LABEL: Record<string, string> = {
 export function SellSection() {
   const { activeAccount, signTransactions } = useWallet();
   const [form, setForm] = useState<Form>({
-    type: "cloud-storage",
+    type: "",
     service: "",
     price: "",
     description: "",
@@ -92,7 +92,8 @@ export function SellSection() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.service.trim() || !form.price || !form.description.trim()) return;
+    if (!form.type || !form.service.trim() || !form.price || !form.description.trim())
+      return;
     setBusy(true);
     setStatus({ kind: "info", text: "Preparing listing transaction…" });
     try {
@@ -155,7 +156,7 @@ export function SellSection() {
     }
   }
 
-  const selType = TYPES.find((t) => t.value === form.type)!;
+  const selType = TYPES.find((t) => t.value === form.type);
 
   return (
     <div className="scroll" style={{ flex: 1 }}>
@@ -279,7 +280,7 @@ export function SellSection() {
                 icon: Tag,
                 key: "service",
                 type: "text",
-                placeholder: `e.g. "Enterprise ${selType.label} Pro"`,
+                placeholder: `e.g. "Enterprise ${selType ? selType.label : 'Service'} Pro"`,
               },
             ].map((f) => (
               <div key={f.key}>
