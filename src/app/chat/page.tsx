@@ -14,7 +14,7 @@ export default function ChatPage() {
           flex: 1,
           display: "flex",
           overflow: "hidden",
-          minHeight: "600px",
+          height: "calc(100vh - 220px)", minHeight: "500px",
           borderRadius: "var(--radius-lg)",
           border: "1px solid var(--border)",
           background: "var(--bg-card)",
