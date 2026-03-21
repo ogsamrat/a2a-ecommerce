@@ -1,40 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
+import algosdk from "algosdk";
 import { getClient } from "@/lib/blockchain/algorand";
 
 export async function POST(req: NextRequest) {
   try {
     const { signedTxn } = await req.json();
-    if (!signedTxn) {
-      return NextResponse.json({ error: "signedTxn (base64) required" }, { status: 400 });
+    if (!signedTxn || typeof signedTxn !== "string") {
+      return NextResponse.json(
+        { error: "signedTxn (base64) required" },
+        { status: 400 },
+      );
     }
 
     const algorand = getClient();
     const algod = algorand.client.algod;
 
     const rawTxn = Uint8Array.from(Buffer.from(signedTxn, "base64"));
-    const { txid } = await algod.sendRawTransaction(rawTxn).do();
-    const confirmation = await algod.pendingTransactionInformation(txid).do();
-
-    let round = 0;
-    if (confirmation.confirmedRound) {
-      round = Number(confirmation.confirmedRound);
-    } else {
-      const result = await algod.statusAfterBlock(0).do();
-      const lastRound = Number(result.lastRound ?? 0);
-      for (let r = lastRound; r < lastRound + 10; r++) {
-        await algod.statusAfterBlock(r).do();
-        const info = await algod.pendingTransactionInformation(txid).do();
-        if (info.confirmedRound) {
-          round = Number(info.confirmedRound);
-          break;
-        }
-      }
+    if (!rawTxn.length) {
+      return NextResponse.json(
+        { error: "signedTxn is empty or invalid base64" },
+        { status: 400 },
+      );
     }
 
-    const network = process.env.ALGORAND_NETWORK?.toLowerCase() === "testnet" ? "testnet" : "localnet";
-    const explorerUrl = network === "testnet"
-      ? `https://testnet.explorer.perawallet.app/tx/${txid}`
-      : null;
+    const { txid } = await algod.sendRawTransaction(rawTxn).do();
+    const confirmation = await algosdk.waitForConfirmation(algod, txid, 10);
+    const round = Number(confirmation.confirmedRound ?? 0);
+
+    const network =
+      process.env.ALGORAND_NETWORK?.toLowerCase() === "testnet"
+        ? "testnet"
+        : "localnet";
+    const explorerUrl =
+      network === "testnet"
+        ? `https://testnet.explorer.perawallet.app/tx/${txid}`
+        : null;
 
     return NextResponse.json({
       success: true,
@@ -43,7 +43,8 @@ export async function POST(req: NextRequest) {
       explorerUrl,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Transaction submission failed";
+    const msg =
+      error instanceof Error ? error.message : "Transaction submission failed";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

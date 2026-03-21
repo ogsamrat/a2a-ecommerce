@@ -1,69 +1,83 @@
 "use client";
 
 import type { NegotiationSession } from "@/lib/agents/types";
+import { ArrowRight, Shield, CheckCircle, XCircle } from "lucide-react";
 
-interface NegotiationTimelineProps {
-  sessions: NegotiationSession[];
-}
+interface Props { sessions: NegotiationSession[]; }
 
-export function NegotiationTimeline({ sessions }: NegotiationTimelineProps) {
+const ACTION_COLOR: Record<string, string> = {
+  accept:  "var(--green)",
+  offer:   "var(--blue-bright)",
+  counter: "#fbbf24",
+  reject:  "#ff6b6b",
+};
+
+export function NegotiationTimeline({ sessions }: Props) {
   if (sessions.length === 0) return null;
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-        x402 Negotiation Log
-      </h3>
-      {sessions.map((session) => (
-        <div key={session.listingTxId} className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-300">{session.sellerName}</span>
-            <div className="flex items-center gap-1.5">
-              {session.zkVerified && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">ZK</span>
+    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      <p className="section-label" style={{ paddingInline:0 }}>
+        <ArrowRight size={10} style={{ display:"inline", marginRight:4 }} />
+        Negotiation Log
+      </p>
+
+      {sessions.map(s => (
+        <div key={s.listingTxId} style={{
+          background:"var(--bg-card)", border:"1px solid var(--border)",
+          borderRadius:"var(--radius-md)", padding:"10px 12px",
+          display:"flex", flexDirection:"column", gap:8,
+        }}>
+          {/* Header */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <span style={{ fontSize:"0.8rem", fontWeight:600, color:"var(--text-1)" }}>{s.sellerName}</span>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              {s.zkVerified && (
+                <span className="badge badge-blue" style={{ display:"flex", alignItems:"center", gap:2 }}>
+                  <Shield size={8} /> ZK
+                </span>
               )}
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded ${session.accepted ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}
-              >
-                {session.accepted ? "Accepted" : "Rejected"}
+              <span style={{ fontSize:"0.7rem", fontWeight:600, display:"flex", alignItems:"center", gap:3,
+                color: s.accepted ? "var(--green)" : "#ff6b6b" }}>
+                {s.accepted ? <CheckCircle size={11} /> : <XCircle size={11} />}
+                {s.accepted ? "Accepted" : "Rejected"}
               </span>
             </div>
           </div>
-          <div className="relative pl-4 space-y-1.5">
-            <div className="absolute left-1.5 top-0 bottom-0 w-px bg-zinc-800" />
-            {session.messages.map((msg) => (
-              <div key={msg.id} className="relative">
-                <div
-                  className={`absolute -left-[10.5px] top-1 w-2.5 h-2.5 rounded-full border-2 ${
-                    msg.action === "accept"
-                      ? "border-emerald-500 bg-emerald-500/20"
-                      : msg.action === "offer"
-                        ? "border-blue-500 bg-blue-500/20"
-                        : msg.action === "counter"
-                          ? "border-amber-500 bg-amber-500/20"
-                          : "border-red-500 bg-red-500/20"
-                  }`}
-                />
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-medium uppercase ${
-                    msg.action === "accept" ? "text-emerald-400"
-                      : msg.action === "offer" ? "text-blue-400"
-                        : msg.action === "counter" ? "text-amber-400"
-                          : "text-red-400"
-                  }`}>
-                    {msg.action}
-                  </span>
-                  <span className="text-[10px] text-zinc-500">{msg.from}</span>
-                  <span className="text-[10px] text-zinc-300 font-medium">{msg.payload.price} ALGO</span>
-                </div>
-              </div>
-            ))}
+
+          {/* Timeline */}
+          <div style={{ position:"relative", paddingLeft:14 }}>
+            <div style={{ position:"absolute", left:5, top:0, bottom:0, width:1, background:"var(--border)" }} />
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {s.messages.map(m => {
+                const c = ACTION_COLOR[m.action] ?? "#ff6b6b";
+                return (
+                  <div key={m.id} style={{ position:"relative" }}>
+                    <div style={{ position:"absolute", left:-10, top:4, width:8, height:8, borderRadius:"50%",
+                      background: `${c}22`, border:`1.5px solid ${c}` }} />
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontSize:"0.65rem", fontWeight:700, color:c, textTransform:"uppercase", fontFamily:"var(--mono)" }}>
+                        {m.action}
+                      </span>
+                      <span style={{ fontSize:"0.65rem", color:"var(--text-4)" }}>{m.from}</span>
+                      <span style={{ fontFamily:"var(--mono)", fontSize:"0.7rem", fontWeight:600, color:"var(--text-2)" }}>
+                        {m.payload.price} ALGO
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex justify-between text-[10px] text-zinc-600 pt-1">
-            <span>{session.originalPrice} → {session.finalPrice} ALGO</span>
-            {session.accepted && (
-              <span className="text-emerald-400">
-                -{Math.round(((session.originalPrice - session.finalPrice) / session.originalPrice) * 100)}%
+
+          {/* Summary */}
+          <div style={{ paddingTop:8, borderTop:"1px solid var(--border)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"0.7rem", color:"var(--text-3)" }}>
+              {s.originalPrice} → {s.finalPrice} ALGO
+            </span>
+            {s.accepted && (
+              <span style={{ fontFamily:"var(--mono)", fontSize:"0.7rem", fontWeight:700, color:"var(--blue-bright)" }}>
+                −{Math.round(((s.originalPrice - s.finalPrice) / s.originalPrice) * 100)}%
               </span>
             )}
           </div>

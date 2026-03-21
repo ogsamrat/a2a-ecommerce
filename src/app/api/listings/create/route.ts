@@ -5,23 +5,42 @@ import { getClient } from "@/lib/blockchain/algorand";
 
 export async function POST(req: NextRequest) {
   try {
-    const { senderAddress, type, service, price, description } = await req.json();
+    const { senderAddress, type, service, price, description } =
+      await req.json();
 
-    if (!senderAddress || !type || !service || !price) {
+    const parsedPrice = Number(price);
+
+    if (!senderAddress || !type || !service || !description) {
       return NextResponse.json(
-        { error: "senderAddress, type, service, price required" },
-        { status: 400 }
+        { error: "senderAddress, type, service, description required" },
+        { status: 400 },
+      );
+    }
+
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      return NextResponse.json(
+        { error: "price must be a positive number" },
+        { status: 400 },
+      );
+    }
+
+    try {
+      algosdk.Address.fromString(senderAddress);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid senderAddress" },
+        { status: 400 },
       );
     }
 
     const secret = randomBytes(32).toString("hex");
-    const preimage = `${secret}|${senderAddress}|${price}|${description ?? ""}`;
+    const preimage = `${secret}|${senderAddress}|${parsedPrice}|${description ?? ""}`;
     const commitment = createHash("sha256").update(preimage).digest("hex");
 
     const noteData = {
       type,
       service,
-      price,
+      price: parsedPrice,
       seller: senderAddress,
       description: description ?? "",
       timestamp: Date.now(),
@@ -41,7 +60,9 @@ export async function POST(req: NextRequest) {
       suggestedParams: params,
     });
 
-    const unsignedTxnB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString("base64");
+    const unsignedTxnB64 = Buffer.from(
+      algosdk.encodeUnsignedTransaction(txn),
+    ).toString("base64");
 
     return NextResponse.json({
       unsignedTxn: unsignedTxnB64,
@@ -51,7 +72,8 @@ export async function POST(req: NextRequest) {
       listing: noteData,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to build listing txn";
+    const msg =
+      error instanceof Error ? error.message : "Failed to build listing txn";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

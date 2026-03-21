@@ -1,6 +1,14 @@
 "use client";
 
 import type { OnChainListing, NegotiationSession } from "@/lib/agents/types";
+import { Shield, TrendingDown, CheckCircle, XCircle, ExternalLink } from "lucide-react";
+
+const TYPE_META: Record<string,{ cls:string; label:string }> = {
+  "cloud-storage": { cls:"type-cloud",   label:"Cloud Storage" },
+  "api-access":    { cls:"type-api",     label:"API Access"    },
+  "compute":       { cls:"type-compute", label:"Compute"       },
+  "hosting":       { cls:"type-hosting", label:"Hosting"       },
+};
 
 interface ListingCardProps {
   listing: OnChainListing;
@@ -9,88 +17,97 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ listing, negotiation, isSelected }: ListingCardProps) {
+  const meta    = TYPE_META[listing.type] ?? { cls:"badge-white", label:listing.type };
+  const savings = negotiation?.accepted
+    ? Math.round(((listing.price - negotiation.finalPrice) / listing.price) * 100) : 0;
+
   return (
-    <div
-      className={`rounded-xl border p-3 transition-all ${
-        isSelected
-          ? "border-emerald-500/40 bg-emerald-500/5"
-          : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
-      }`}
-    >
-      <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-zinc-200 truncate">{listing.seller}</h3>
-          <p className="text-[10px] text-zinc-500 mt-0.5">{listing.type}</p>
+    <div style={{
+      background: isSelected ? "var(--blue-glow)" : "var(--bg-card)",
+      border: `1px solid ${isSelected ? "var(--blue-border)" : "var(--border)"}`,
+      borderRadius: "var(--radius-md)",
+      padding: "10px 12px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+      boxShadow: isSelected ? "0 0 16px rgba(43,127,255,0.1)" : "none",
+      transition: "all 0.2s",
+    }}>
+      {/* Top */}
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
+        <div style={{ minWidth:0, flex:1 }}>
+          <p style={{ fontSize:"0.8rem", fontWeight:600, color:"var(--text-1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {listing.seller}
+          </p>
+          <span className={`badge ${meta.cls}`} style={{ marginTop:4 }}>{meta.label}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {listing.zkCommitment && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400">
-              ZK ✓
-            </span>
-          )}
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/15 text-blue-400">
-            On-Chain
+        {listing.zkCommitment && (
+          <span className="badge badge-blue" style={{ display:"flex", alignItems:"center", gap:3, flexShrink:0 }}>
+            <Shield size={9} /> ZK
           </span>
-        </div>
+        )}
       </div>
 
-      <p className="text-xs text-zinc-500 leading-relaxed mb-2 line-clamp-2">
+      {/* Description */}
+      <p style={{ fontSize:"0.75rem", color:"var(--text-3)", lineHeight:1.55,
+        overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
         {listing.description}
       </p>
 
-      <div className="text-[10px] text-zinc-600 mb-2 font-mono truncate">
-        TX: {listing.txId.slice(0, 24)}...
+      {/* TX / round */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <span style={{ fontFamily:"var(--mono)", fontSize:"0.65rem", color:"var(--text-4)" }}>
+          #{listing.round}
+        </span>
+        <a href={`https://testnet.explorer.perawallet.app/tx/${listing.txId}`} target="_blank" rel="noopener noreferrer"
+          style={{ color:"var(--text-4)", display:"flex" }}
+          onMouseEnter={e=>(e.currentTarget.style.color="var(--blue-bright)")}
+          onMouseLeave={e=>(e.currentTarget.style.color="var(--text-4)")}>
+          <ExternalLink size={11} />
+        </a>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] text-zinc-600">Round: {listing.round}</span>
-        <div className="text-right">
-          {negotiation ? (
-            <div>
-              <span
-                className={`text-sm font-bold ${negotiation.accepted ? "text-emerald-400" : "text-red-400"}`}
-              >
-                {negotiation.finalPrice} ALGO
-              </span>
-              <span className="text-[10px] text-zinc-600 ml-1 line-through">
-                {listing.price}
-              </span>
-            </div>
-          ) : (
-            <span className="text-sm font-semibold text-zinc-300">
-              {listing.price} ALGO
+      {/* Price */}
+      <div style={{ paddingTop:8, borderTop:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        {negotiation ? (
+          <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"0.75rem", textDecoration:"line-through", color:"var(--text-4)" }}>
+              {listing.price}
             </span>
-          )}
-        </div>
-      </div>
-
-      {negotiation && (
-        <div className="mt-2 pt-2 border-t border-zinc-800/50">
-          <div className="flex items-center justify-between text-[10px]">
-            <span className="text-zinc-500">
-              {negotiation.rounds} msg(s) • {negotiation.zkVerified ? "ZK Verified" : "No ZK"}
-            </span>
-            <span
-              className={`font-medium ${negotiation.accepted ? "text-emerald-400" : "text-red-400"}`}
-            >
-              {negotiation.accepted ? "DEAL" : "NO DEAL"}
+            <span style={{ fontFamily:"var(--mono)", fontSize:"0.9rem", fontWeight:700, color: negotiation.accepted ? "var(--green)" : "#ff6b6b" }}>
+              {negotiation.finalPrice} <span style={{ fontSize:"0.65rem", fontWeight:400, color:"var(--text-4)" }}>ALGO</span>
             </span>
           </div>
-          {negotiation.accepted && (
-            <div className="mt-1 text-[10px] text-zinc-500">
-              Saved{" "}
-              {Math.round(
-                ((listing.price - negotiation.finalPrice) / listing.price) * 100
-              )}
-              % from listed price
-            </div>
-          )}
+        ) : (
+          <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"0.9rem", fontWeight:700, color:"var(--blue-bright)" }}>
+              {listing.price}
+            </span>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"0.65rem", color:"var(--text-4)" }}>ALGO</span>
+          </div>
+        )}
+        {negotiation && (
+          <span style={{ fontSize:"0.7rem", fontWeight:600, display:"flex", alignItems:"center", gap:3,
+            color: negotiation.accepted ? "var(--green)" : "#ff6b6b" }}>
+            {negotiation.accepted ? <CheckCircle size={11} /> : <XCircle size={11} />}
+            {negotiation.accepted ? "DEAL" : "NO DEAL"}
+          </span>
+        )}
+      </div>
+
+      {/* Savings */}
+      {negotiation?.accepted && savings > 0 && (
+        <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:"0.7rem", color:"var(--blue-bright)" }}>
+          <TrendingDown size={11} /> Saved {savings}%
         </div>
       )}
 
       {isSelected && (
-        <div className="mt-2 py-1.5 rounded-lg bg-emerald-500/10 text-center">
-          <span className="text-[11px] font-semibold text-emerald-400">SELECTED</span>
+        <div style={{ padding:"4px 0", textAlign:"center", background:"var(--blue-glow)",
+          border:"1px solid var(--blue-border)", borderRadius:"var(--radius-sm)" }}>
+          <span style={{ fontSize:"0.65rem", fontWeight:700, color:"var(--blue-bright)", letterSpacing:"0.08em", textTransform:"uppercase", fontFamily:"var(--mono)" }}>
+            Best Deal
+          </span>
         </div>
       )}
     </div>

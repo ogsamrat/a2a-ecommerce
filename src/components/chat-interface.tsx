@@ -1,85 +1,67 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AgentAction } from "@/lib/agents/types";
+import type { AgentAction } from "@/lib/agents/types";
+import { Bot, User, Cpu, Zap, ArrowRight, ExternalLink } from "lucide-react";
 
 interface ChatInterfaceProps {
   actions: AgentAction[];
 }
 
-function AgentAvatar({ agent }: { agent: AgentAction["agent"] }) {
-  const config: Record<string, { bg: string; label: string }> = {
-    user: { bg: "bg-blue-600", label: "You" },
-    buyer: { bg: "bg-emerald-600", label: "BA" },
-    seller: { bg: "bg-amber-600", label: "SA" },
-    system: { bg: "bg-purple-600", label: "SYS" },
-  };
-  const c = config[agent] ?? config.system;
-  return (
-    <div
-      className={`w-8 h-8 rounded-full ${c.bg} flex items-center justify-center text-[10px] font-bold shrink-0`}
-    >
-      {c.label}
-    </div>
-  );
-}
+const AGENT_CFG: Record<string, { Icon: typeof Bot; color: string; label: string }> = {
+  user:   { Icon: User, color: "var(--blue-bright)", label: "You"          },
+  buyer:  { Icon: Bot,  color: "var(--green)",       label: "Buyer Agent"  },
+  seller: { Icon: Cpu,  color: "#fbbf24",            label: "Seller Agent" },
+  system: { Icon: Zap,  color: "var(--text-3)",      label: "System"       },
+};
 
-function TypeBadge({ type }: { type: AgentAction["type"] }) {
-  const config: Record<string, { bg: string; text: string }> = {
-    thinking: { bg: "bg-zinc-700/50", text: "text-zinc-400" },
-    message: { bg: "bg-blue-500/20", text: "text-blue-400" },
-    negotiation: { bg: "bg-amber-500/20", text: "text-amber-400" },
-    transaction: { bg: "bg-purple-500/20", text: "text-purple-400" },
-    result: { bg: "bg-emerald-500/20", text: "text-emerald-400" },
-  };
-  const c = config[type] ?? config.thinking;
-  return (
-    <span
-      className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${c.bg} ${c.text}`}
-    >
-      {type}
-    </span>
-  );
-}
+const TYPE_CFG: Record<string, { label: string; cls: string }> = {
+  thinking:    { label: "thinking",    cls: "badge-white"  },
+  message:     { label: "message",    cls: "badge-white"  },
+  negotiation: { label: "negotiation",cls: "badge-blue"   },
+  transaction: { label: "tx",         cls: "badge-blue"   },
+  result:      { label: "result",     cls: "badge-green"  },
+};
 
-function renderContent(content: string) {
-  const parts = content.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+function renderContent(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[.*?\]\(.*?\))/g);
   return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={i} className="font-semibold text-white">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return (
-        <code
-          key={i}
-          className="px-1 py-0.5 bg-zinc-800 rounded text-xs font-mono text-zinc-300"
-        >
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={i} style={{ color: "var(--text-1)", fontWeight: 600 }}>{part.slice(2,-2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`"))
+      return <code key={i} style={{ background:"rgba(255,255,255,0.06)", borderRadius:4, padding:"1px 5px", fontFamily:"var(--mono)", fontSize:"0.8em", color:"var(--text-2)" }}>{part.slice(1,-1)}</code>;
+    const m = part.match(/^\[(.*?)\]\((.*?)\)$/);
+    if (m) return <a key={i} href={m[2]} target="_blank" rel="noopener noreferrer" style={{ color:"var(--blue-bright)", textDecoration:"underline", display:"inline-flex", alignItems:"center", gap:3 }}>{m[1]}<ExternalLink size={10}/></a>;
     return <span key={i}>{part}</span>;
   });
 }
 
-function ChatBubble({ action }: { action: AgentAction }) {
-  const isUser = action.agent === "user";
+function Bubble({ action }: { action: AgentAction }) {
+  const cfg  = AGENT_CFG[action.agent]  ?? AGENT_CFG.system;
+  const type = TYPE_CFG[action.type]    ?? TYPE_CFG.thinking;
+  const isUser   = action.agent === "user";
   const isSystem = action.agent === "system";
 
+  /* ── System row (centered) ── */
   if (isSystem) {
     return (
-      <div className="flex justify-center my-2 animate-fade-in-up">
-        <div className="max-w-lg px-4 py-2 rounded-lg bg-zinc-800/30 border border-zinc-700/30">
-          <div className="flex items-center gap-2 mb-1">
-            <AgentAvatar agent="system" />
-            <span className="text-xs text-zinc-500">{action.agentName}</span>
-            <TypeBadge type={action.type} />
+      <div className="anim-fade-up" style={{ display:"flex", justifyContent:"center", padding:"4px 20px" }}>
+        <div style={{
+          maxWidth: 560,
+          background: "var(--bg-card)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-md)",
+          padding: "10px 14px",
+          width: "100%",
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+            <cfg.Icon size={12} color={cfg.color} />
+            <span style={{ fontSize:"0.7rem", color:cfg.color, fontWeight:600, letterSpacing:"0.04em" }}>
+              {action.agentName?.toUpperCase()}
+            </span>
+            <span className={`badge ${type.cls}`}>{type.label}</span>
           </div>
-          <p className="text-xs text-zinc-400 whitespace-pre-line leading-relaxed">
+          <p style={{ fontSize:"0.8125rem", color:"var(--text-2)", lineHeight:1.6, whiteSpace:"pre-line" }}>
             {renderContent(action.content)}
           </p>
         </div>
@@ -87,43 +69,70 @@ function ChatBubble({ action }: { action: AgentAction }) {
     );
   }
 
+  /* ── Chat bubble ── */
   return (
-    <div
-      className={`flex gap-2.5 my-2 animate-fade-in-up ${isUser ? "flex-row-reverse" : "flex-row"}`}
-    >
-      <AgentAvatar agent={action.agent} />
-      <div
-        className={`max-w-[75%] ${isUser ? "items-end" : "items-start"}`}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-zinc-400">
-            {action.agentName}
-          </span>
-          <TypeBadge type={action.type} />
-          <span className="text-[10px] text-zinc-600">
-            {new Date(action.timestamp).toLocaleTimeString()}
+    <div className="anim-fade-up" style={{
+      display: "flex",
+      flexDirection: isUser ? "row-reverse" : "row",
+      gap: 10,
+      padding: "4px 20px",
+      alignItems: "flex-start",
+    }}>
+      {/* Avatar */}
+      <div style={{
+        width: 28, height: 28,
+        borderRadius: "var(--radius-sm)",
+        background: isUser ? "var(--blue-glow)" : "rgba(255,255,255,0.04)",
+        border: "1px solid " + (isUser ? "var(--blue-border)" : "var(--border)"),
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexShrink: 0,
+      }}>
+        <cfg.Icon size={13} color={cfg.color} />
+      </div>
+
+      <div style={{ maxWidth: "76%", display:"flex", flexDirection:"column", alignItems: isUser ? "flex-end" : "flex-start", gap:4 }}>
+        {/* Meta */}
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          {!isUser && (
+            <span style={{ fontSize:"0.7rem", fontWeight:600, color:cfg.color }}>{action.agentName}</span>
+          )}
+          <span className={`badge ${type.cls}`}>{type.label}</span>
+          <span style={{ fontSize:"0.65rem", color:"var(--text-4)", fontFamily:"var(--mono)" }}>
+            {new Date(action.timestamp).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}
           </span>
         </div>
-        <div
-          className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-line ${
-            isUser
-              ? "bg-blue-600/20 border border-blue-500/20 text-blue-100"
-              : action.agent === "seller"
-                ? "bg-amber-500/10 border border-amber-500/15 text-amber-100"
-                : action.type === "transaction"
-                  ? "bg-purple-500/10 border border-purple-500/15 text-purple-100"
-                  : action.type === "result"
-                    ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-100"
-                    : "bg-zinc-800/50 border border-zinc-700/30 text-zinc-300"
-          }`}
-        >
+
+        {/* Bubble */}
+        <div style={{
+          background: isUser
+            ? "var(--blue-glow)"
+            : action.agent === "seller"
+              ? "rgba(251,191,36,0.06)"
+              : action.type === "transaction"
+                ? "rgba(43,127,255,0.06)"
+                : action.type === "result"
+                  ? "rgba(46,240,161,0.06)"
+                  : "var(--bg-card)",
+          border: "1px solid " + (
+            isUser ? "var(--blue-border)"
+            : action.agent === "seller" ? "rgba(251,191,36,0.18)"
+            : action.type === "transaction" ? "var(--blue-border)"
+            : action.type === "result" ? "var(--green-border)"
+            : "var(--border)"
+          ),
+          borderRadius: "var(--radius-md)",
+          padding: "10px 14px",
+          fontSize: "0.8375rem",
+          color: "var(--text-2)",
+          lineHeight: 1.65,
+          whiteSpace: "pre-line",
+        }}>
           {renderContent(action.content)}
           {action.data?.price !== undefined && (
-            <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2">
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                Price
-              </span>
-              <span className="text-sm font-semibold text-white">
+            <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid var(--border)", display:"flex", alignItems:"center", gap:6 }}>
+              <ArrowRight size={11} color="var(--text-4)" />
+              <span style={{ fontSize:"0.75rem", color:"var(--text-3)" }}>Price</span>
+              <span style={{ fontFamily:"var(--mono)", fontSize:"0.875rem", fontWeight:600, color:"var(--blue-bright)" }}>
                 {String(action.data.price)} ALGO
               </span>
             </div>
@@ -135,40 +144,41 @@ function ChatBubble({ action }: { action: AgentAction }) {
 }
 
 export function ChatInterface({ actions }: ChatInterfaceProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    ref.current?.scrollIntoView({ behavior: "smooth" });
   }, [actions.length]);
 
   if (actions.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4 max-w-md">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/10 flex items-center justify-center">
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              A2A
-            </span>
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+        <div className="anim-fade-up" style={{ textAlign:"center", maxWidth:360, display:"flex", flexDirection:"column", alignItems:"center", gap:20 }}>
+
+          {/* Icon */}
+          <div className="anim-glow-pulse" style={{
+            width:56, height:56,
+            borderRadius:14,
+            background:"var(--blue-glow)",
+            border:"1px solid var(--blue-border)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}>
+            <Bot size={26} color="var(--blue-bright)" className="anim-float" />
           </div>
-          <h2 className="text-xl font-semibold text-zinc-200">
-            Agent-to-Agent Commerce
-          </h2>
-          <p className="text-sm text-zinc-500 leading-relaxed">
-            Tell your buyer agent what you need. It will search the marketplace,
-            negotiate with sellers, and execute payment on Algorand — all
-            autonomously.
-          </p>
-          <div className="flex flex-wrap justify-center gap-2 pt-2">
-            {["SME Procurement", "Cloud Services", "API Access", "Auto-Buy"].map(
-              (tag) => (
-                <span
-                  key={tag}
-                  className="px-2.5 py-1 rounded-full bg-zinc-800/50 text-[11px] text-zinc-500 border border-zinc-800"
-                >
-                  {tag}
-                </span>
-              )
-            )}
+
+          <div>
+            <h2 style={{ fontSize:"1.125rem", fontWeight:700, color:"var(--text-1)", marginBottom:8 }}>
+              AI Buyer Agent
+            </h2>
+            <p style={{ fontSize:"0.8375rem", color:"var(--text-3)", lineHeight:1.7 }}>
+              Describe what you want to buy. The agent will discover services, compare options, negotiate the best price, and execute payment on Algorand.
+            </p>
+          </div>
+
+          <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:6 }}>
+            {["Auto-Discover","AI Negotiation","On-Chain Payment","ZK Verified"].map(tag => (
+              <span key={tag} className="badge badge-white">{tag}</span>
+            ))}
           </div>
         </div>
       </div>
@@ -176,11 +186,9 @@ export function ChatInterface({ actions }: ChatInterfaceProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-thin">
-      {actions.map((action) => (
-        <ChatBubble key={action.id} action={action} />
-      ))}
-      <div ref={bottomRef} />
+    <div className="scroll" style={{ flex:1, paddingBlock:12 }}>
+      {actions.map(a => <Bubble key={a.id} action={a} />)}
+      <div ref={ref} />
     </div>
   );
 }

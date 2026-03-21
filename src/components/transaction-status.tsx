@@ -1,53 +1,63 @@
 "use client";
 
 import type { EscrowState } from "@/lib/agents/types";
+import { CheckCircle, ExternalLink, Zap } from "lucide-react";
 
-interface TransactionStatusProps {
-  escrow: EscrowState;
-}
+interface Props { escrow: EscrowState; }
 
-export function TransactionStatus({ escrow }: TransactionStatusProps) {
+export function TransactionStatus({ escrow }: Props) {
   if (escrow.status === "idle") return null;
 
+  const rows = [
+    { label:"Amount",  value:`${escrow.amount} ALGO`,        mono:true },
+    { label:"Round",   value:String(escrow.confirmedRound),  mono:true },
+    { label:"TX ID",   value:`${escrow.txId.slice(0,10)}…${escrow.txId.slice(-6)}`, mono:true },
+    { label:"Buyer",   value: escrow.buyerAddress  ? `${escrow.buyerAddress.slice(0,8)}…${escrow.buyerAddress.slice(-4)}`  : "—", mono:true },
+    { label:"Seller",  value: escrow.sellerAddress ? `${escrow.sellerAddress.slice(0,8)}…${escrow.sellerAddress.slice(-4)}` : "—", mono:true },
+  ];
+
   return (
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+      <p className="section-label" style={{ paddingInline:0 }}>
+        <Zap size={10} style={{ display:"inline", marginRight:4 }} />
         On-Chain Transaction
-      </h3>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-2">
-        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2 text-center mb-2">
-          <span className="text-[11px] font-semibold text-emerald-400">
-            Payment Confirmed
-          </span>
+      </p>
+
+      <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", padding:"10px 12px", display:"flex", flexDirection:"column", gap:10 }}>
+
+        {/* Confirmed banner */}
+        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 10px", background:"rgba(46,240,161,0.06)", border:"1px solid var(--green-border)", borderRadius:"var(--radius-sm)" }}>
+          <CheckCircle size={13} color="var(--green)" />
+          <span style={{ fontSize:"0.8rem", fontWeight:600, color:"var(--green)" }}>Payment Confirmed</span>
         </div>
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-[10px]">
-            <span className="text-zinc-500">Amount</span>
-            <span className="text-zinc-300 font-medium">{escrow.amount} ALGO</span>
-          </div>
-          <div className="flex justify-between text-[10px]">
-            <span className="text-zinc-500">Confirmed Round</span>
-            <span className="text-zinc-300 font-mono">{escrow.confirmedRound}</span>
-          </div>
-          <div className="flex justify-between text-[10px]">
-            <span className="text-zinc-500">TX ID</span>
-            <span className="text-zinc-300 font-mono text-right max-w-[160px] truncate">
-              {escrow.txId}
-            </span>
-          </div>
-          <div className="flex justify-between text-[10px]">
-            <span className="text-zinc-500">Buyer</span>
-            <span className="text-zinc-300 font-mono">
-              {escrow.buyerAddress.slice(0, 8)}...{escrow.buyerAddress.slice(-4)}
-            </span>
-          </div>
-          <div className="flex justify-between text-[10px]">
-            <span className="text-zinc-500">Seller</span>
-            <span className="text-zinc-300 font-mono">
-              {escrow.sellerAddress.slice(0, 8)}...{escrow.sellerAddress.slice(-4)}
-            </span>
-          </div>
+
+        {/* Rows */}
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {rows.map(r => (
+            <div key={r.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ fontSize:"0.7rem", color:"var(--text-4)" }}>{r.label}</span>
+              <span style={{ fontFamily: r.mono ? "var(--mono)" : "var(--font)", fontSize:"0.7rem", color:"var(--text-2)" }}>
+                {r.value}
+              </span>
+            </div>
+          ))}
         </div>
+
+        {/* Explorer link */}
+        <a href={`https://testnet.explorer.perawallet.app/tx/${escrow.txId}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{
+            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+            padding:"6px", borderRadius:"var(--radius-sm)",
+            background:"rgba(43,127,255,0.06)", border:"1px solid var(--blue-border)",
+            color:"var(--blue-bright)", fontSize:"0.75rem", textDecoration:"none",
+            transition:"background 0.15s",
+          }}
+          onMouseEnter={e=>(e.currentTarget.style.background="rgba(43,127,255,0.1)")}
+          onMouseLeave={e=>(e.currentTarget.style.background="rgba(43,127,255,0.06)")}>
+          <ExternalLink size={12} />
+          View on Pera Explorer
+        </a>
       </div>
     </div>
   );
