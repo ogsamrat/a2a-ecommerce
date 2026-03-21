@@ -1051,3 +1051,68 @@ p {
     grid-template-columns: 1fr;
   }
 }
+
+.truncate-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: linear-gradient(180deg, var(--card) 0%, var(--background) 100%);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  width: min(600px, 100%);
+  padding: 1.5rem;
+  border-radius: 8px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-content h3 {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.modal-content .modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.modal-content .modal-close:hover {
+  color: var(--foreground);
+}
+
+.modal-content p {
+  color: var(--foreground);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.modal-content .code-tag {
+  margin-bottom: 0px;
+}

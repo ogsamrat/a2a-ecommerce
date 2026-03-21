@@ -10,8 +10,14 @@ function asError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
+function shortAddress(address: string): string {
+  if (!address || address.length < 12) return address;
+  return `${address.slice(0, 8)}...${address.slice(-8)}`;
+}
+
 export default function MarketplacePage() {
   const [listings, setListings] = useState<OnChainListing[]>([]);
+  const [selectedItem, setSelectedItem] = useState<OnChainListing | null>(null);
   const [reputationByAgent, setReputationByAgent] = useState<
     Record<string, number>
   >({});
@@ -170,20 +176,26 @@ export default function MarketplacePage() {
 
         <div className="product-grid">
           {filtered.map((item) => (
-            <article key={item.txId} className="cyber-card product-card">
+            <article
+              key={item.txId}
+              className="cyber-card product-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => setSelectedItem(item)}
+            >
               <div className="product-top">
                 <span>{item.type}</span>
                 <span>{formatReputation(reputationByAgent[item.seller])}</span>
               </div>
               <h4>{item.service}</h4>
-              <p>{item.seller}</p>
-              <p>{item.description}</p>
+              <p className="code-tag truncate-1">{shortAddress(item.seller)}</p>
+              <p className="truncate-1">{item.description}</p>
               <div className="product-bottom">
                 <span>{item.price} ALGO</span>
                 <a
                   className="btn-outline"
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   href={`https://testnet.explorer.perawallet.app/tx/${item.txId}`}
                 >
                   Explorer
@@ -196,6 +208,66 @@ export default function MarketplacePage() {
           )}
         </div>
       </section>
+
+      {selectedItem && (
+        <div className="modal-overlay" onClick={() => setSelectedItem(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setSelectedItem(null)}
+            >
+              &times;
+            </button>
+            <h3>{selectedItem.service}</h3>
+            <div
+              className="product-top"
+              style={{
+                justifyContent: "flex-start",
+                gap: "1rem",
+                marginTop: 0,
+                marginBottom: "0.5rem",
+              }}
+            >
+              <span>{selectedItem.type}</span>
+              <span>
+                {formatReputation(reputationByAgent[selectedItem.seller])}
+              </span>
+            </div>
+            <p className="code-tag" style={{ wordBreak: "break-all" }}>
+              Seller: {selectedItem.seller}
+            </p>
+            <div
+              style={{
+                maxHeight: "40vh",
+                overflowY: "auto",
+                paddingRight: "0.5rem",
+              }}
+            >
+              <p>
+                <strong style={{ color: "var(--accent)" }}>Description:</strong>
+                <br />
+                {selectedItem.description}
+              </p>
+            </div>
+            <p>
+              <strong style={{ color: "var(--accent)" }}>Price:</strong>{" "}
+              {selectedItem.price} ALGO
+            </p>
+            <div style={{ marginTop: "0.5rem" }}>
+              <a
+                className="btn-outline"
+                target="_blank"
+                rel="noreferrer"
+                href={`https://testnet.explorer.perawallet.app/tx/${selectedItem.txId}`}
+                style={{ display: "inline-block" }}
+              >
+                View on Explorer
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardShell>
   );
 }
