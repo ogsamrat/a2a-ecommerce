@@ -7,11 +7,23 @@ import { NegotiationTimeline } from "@/components/negotiation-timeline";
 import { TransactionStatus } from "@/components/transaction-status";
 import { ListingCard } from "@/components/seller-card";
 import {
-  Send, Sparkles, Bot, Zap, X, CheckCircle, ArrowRight, ToggleLeft, ToggleRight,
+  Send,
+  Sparkles,
+  Bot,
+  Zap,
+  X,
+  CheckCircle,
+  ArrowRight,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import type {
-  SessionState, AgentAction, ParsedIntent, OnChainListing,
-  NegotiationSession, EscrowState,
+  SessionState,
+  AgentAction,
+  ParsedIntent,
+  OnChainListing,
+  NegotiationSession,
+  EscrowState,
 } from "@/lib/agents/types";
 
 const SUGGESTIONS = [
@@ -21,46 +33,92 @@ const SUGGESTIONS = [
   "Best hosting deal available",
 ];
 
-const EMPTY_ESCROW: EscrowState = { status:"idle", buyerAddress:"", sellerAddress:"", amount:0, txId:"", confirmedRound:0 };
-const INIT_STATE: SessionState  = { sessionId:"", intent:null, listings:[], negotiations:[], selectedDeal:null, escrow:EMPTY_ESCROW, actions:[], phase:"idle", autoBuy:false };
+const EMPTY_ESCROW: EscrowState = {
+  status: "idle",
+  buyerAddress: "",
+  sellerAddress: "",
+  amount: 0,
+  txId: "",
+  confirmedRound: 0,
+};
+const INIT_STATE: SessionState = {
+  sessionId: "",
+  intent: null,
+  listings: [],
+  negotiations: [],
+  selectedDeal: null,
+  escrow: EMPTY_ESCROW,
+  actions: [],
+  phase: "idle",
+  autoBuy: false,
+};
 
-const PHASE_LABEL: Record<string, { text:string; color:string }> = {
-  idle:         { text:"Ready",          color:"var(--text-4)"    },
-  parsing:      { text:"Parsing…",       color:"var(--blue-bright)" },
-  initializing: { text:"Initializing…",  color:"var(--blue-bright)" },
-  discovering:  { text:"Discovering…",   color:"#a78bfa"          },
-  negotiating:  { text:"Negotiating…",   color:"#fbbf24"          },
-  executing:    { text:"Executing…",     color:"var(--green)"     },
-  completed:    { text:"Done",           color:"var(--green)"     },
-  error:        { text:"Error",          color:"#ff6b6b"          },
+const PHASE_LABEL: Record<string, { text: string; color: string }> = {
+  idle: { text: "Ready", color: "var(--text-4)" },
+  parsing: { text: "Parsing…", color: "var(--blue-bright)" },
+  initializing: { text: "Initializing…", color: "var(--blue-bright)" },
+  discovering: { text: "Discovering…", color: "#a78bfa" },
+  negotiating: { text: "Negotiating…", color: "#fbbf24" },
+  executing: { text: "Executing…", color: "var(--green)" },
+  completed: { text: "Done", color: "var(--green)" },
+  error: { text: "Error", color: "#ff6b6b" },
 };
 
 export function ChatSection() {
   const { activeAccount, signTransactions } = useWallet();
-  const [state, setState]       = useState<SessionState>(INIT_STATE);
-  const [loading, setLoading]   = useState(false);
-  const [inited, setInited]     = useState(false);
-  const [msg, setMsg]           = useState("");
+  const [state, setState] = useState<SessionState>(INIT_STATE);
+  const [loading, setLoading] = useState(false);
+  const [inited, setInited] = useState(false);
+  const [msg, setMsg] = useState("");
 
   /* ── Helpers ── */
-  const addActions = useCallback((acts: AgentAction[]) =>
-    setState(p => ({ ...p, actions: [...p.actions, ...acts] })), []);
+  const addActions = useCallback(
+    (acts: AgentAction[]) =>
+      setState((p) => ({ ...p, actions: [...p.actions, ...acts] })),
+    [],
+  );
 
   function sysAction(content: string, type: AgentAction["type"] = "message") {
-    addActions([{ id:crypto.randomUUID(), agent:"system", agentName:"System", type, content, timestamp:new Date().toISOString() }]);
+    addActions([
+      {
+        id: crypto.randomUUID(),
+        agent: "system",
+        agentName: "System",
+        type,
+        content,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
   }
 
-  async function api<T>(url: string, body: Record<string, unknown>, phase: SessionState["phase"]): Promise<T|null> {
-    setState(p => ({ ...p, phase }));
+  async function api<T>(
+    url: string,
+    body: Record<string, unknown>,
+    phase: SessionState["phase"],
+  ): Promise<T | null> {
+    setState((p) => ({ ...p, phase }));
     try {
-      const r = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       if (d.actions) addActions(d.actions);
       return d as T;
-    } catch(e) {
-      addActions([{ id:crypto.randomUUID(), agent:"system", agentName:"System", type:"result", content:`**Error:** ${e instanceof Error ? e.message : "unknown"}`, timestamp:new Date().toISOString() }]);
-      setState(p => ({ ...p, phase:"error" }));
+    } catch (e) {
+      addActions([
+        {
+          id: crypto.randomUUID(),
+          agent: "system",
+          agentName: "System",
+          type: "result",
+          content: `**Error:** ${e instanceof Error ? e.message : "unknown"}`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      setState((p) => ({ ...p, phase: "error" }));
       return null;
     }
   }
@@ -69,107 +127,236 @@ export function ChatSection() {
   async function submit(text: string) {
     const t = text.trim();
     if (!t || loading) return;
-    setLoading(true); setMsg("");
-    setState(p => ({ ...INIT_STATE, autoBuy:p.autoBuy, sessionId:crypto.randomUUID(),
-      actions:[{ id:crypto.randomUUID(), agent:"user", agentName:"You", type:"message", content:t, timestamp:new Date().toISOString() }]
+    setLoading(true);
+    setMsg("");
+    setState((p) => ({
+      ...INIT_STATE,
+      autoBuy: p.autoBuy,
+      sessionId: crypto.randomUUID(),
+      actions: [
+        {
+          id: crypto.randomUUID(),
+          agent: "user",
+          agentName: "You",
+          type: "message",
+          content: t,
+          timestamp: new Date().toISOString(),
+        },
+      ],
     }));
 
     if (!inited) {
-      const r = await api<{success:boolean}>("/api/init", {}, "initializing");
-      if (!r?.success) { setLoading(false); return; }
+      const r = await api<{ success?: boolean }>(
+        "/api/init",
+        {},
+        "initializing",
+      );
+      // Even if init warns (success=false), it's a recoverable warning so we proceed.
+      // E.g. we use the real network listings instead of seeded ones.
+      if (r === null) {
+        setLoading(false);
+        return;
+      } // Network crash completely
       setInited(true);
-      await new Promise(res => setTimeout(res, 2000));
+      await new Promise((res) => setTimeout(res, 2000));
     }
 
-    const ir = await api<{intent:ParsedIntent}>("/api/intent", { message:t }, "parsing");
-    if (!ir?.intent) { setLoading(false); return; }
+    const ir = await api<{ intent: ParsedIntent }>(
+      "/api/intent",
+      { message: t },
+      "parsing",
+    );
+    if (!ir?.intent) {
+      setLoading(false);
+      return;
+    }
     const intent = ir.intent;
-    setState(p => ({ ...p, intent }));
+    setState((p) => ({ ...p, intent }));
 
-    const dr = await api<{listings:OnChainListing[]}>("/api/discover", { intent }, "discovering");
-    if (!dr?.listings?.length) { setState(p => ({ ...p, phase:"completed" })); setLoading(false); return; }
+    const dr = await api<{ listings: OnChainListing[] }>(
+      "/api/discover",
+      { intent },
+      "discovering",
+    );
+    if (!dr?.listings?.length) {
+      setState((p) => ({ ...p, phase: "completed" }));
+      setLoading(false);
+      return;
+    }
     const listings = dr.listings;
-    setState(p => ({ ...p, listings }));
+    setState((p) => ({ ...p, listings }));
 
-    const nr = await api<{sessions:NegotiationSession[];bestDeal:NegotiationSession|null}>("/api/negotiate", { intent, listings }, "negotiating");
-    if (!nr) { setLoading(false); return; }
-    setState(p => ({ ...p, negotiations:nr.sessions, selectedDeal:nr.bestDeal }));
+    const nr = await api<{
+      sessions: NegotiationSession[];
+      bestDeal: NegotiationSession | null;
+    }>("/api/negotiate", { intent, listings }, "negotiating");
+    if (!nr) {
+      setLoading(false);
+      return;
+    }
+    setState((p) => ({
+      ...p,
+      negotiations: nr.sessions,
+      selectedDeal: nr.bestDeal,
+    }));
 
-    if (!nr.bestDeal) { setState(p => ({ ...p, phase:"completed" })); setLoading(false); return; }
+    if (!nr.bestDeal) {
+      setState((p) => ({ ...p, phase: "completed" }));
+      setLoading(false);
+      return;
+    }
 
     if (state.autoBuy) {
       await execDeal(nr.bestDeal);
     } else {
-      addActions([{ id:crypto.randomUUID(), agent:"buyer", agentName:"Buyer Agent", type:"result",
-        content: activeAccount
-          ? `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Ready to execute — confirm below.`
-          : `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Connect your wallet to sign.`,
-        timestamp:new Date().toISOString() }]);
-      setState(p => ({ ...p, phase:"completed" }));
+      addActions([
+        {
+          id: crypto.randomUUID(),
+          agent: "buyer",
+          agentName: "Buyer Agent",
+          type: "result",
+          content: activeAccount
+            ? `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Ready to execute — confirm below.`
+            : `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Connect your wallet to sign.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      setState((p) => ({ ...p, phase: "completed" }));
     }
     setLoading(false);
   }
 
   async function execDeal(deal: NegotiationSession) {
     setLoading(true);
-    setState(p => ({ ...p, phase:"executing" }));
+    setState((p) => ({ ...p, phase: "executing" }));
     if (activeAccount) await execWallet(deal);
     else await execServer(deal);
-    setState(p => ({ ...p, phase:"completed" }));
+    setState((p) => ({ ...p, phase: "completed" }));
     setLoading(false);
   }
 
   async function execWallet(deal: NegotiationSession) {
     try {
-      sysAction(`Preparing **${deal.finalPrice} ALGO** payment…`, "transaction");
-      const prep = await (await fetch("/api/wallet/prepare-payment", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ senderAddress:activeAccount!.address, receiverAddress:deal.sellerAddress, amountAlgo:deal.finalPrice, note:`A2A | ${deal.service}` })
-      })).json();
+      sysAction(
+        `Preparing **${deal.finalPrice} ALGO** payment…`,
+        "transaction",
+      );
+      const prep = await (
+        await fetch("/api/wallet/prepare-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senderAddress: activeAccount!.address,
+            receiverAddress: deal.sellerAddress,
+            amountAlgo: deal.finalPrice,
+            note: `A2A | ${deal.service}`,
+          }),
+        })
+      ).json();
       if (prep.error) throw new Error(prep.error);
-      const bytes = Uint8Array.from(atob(prep.unsignedTxn), c => c.charCodeAt(0));
+      const bytes = Uint8Array.from(atob(prep.unsignedTxn), (c) =>
+        c.charCodeAt(0),
+      );
       const signed = (await signTransactions([bytes]))[0];
       if (!signed) throw new Error("Wallet returned empty signature");
       const b64 = btoa(String.fromCharCode(...Array.from(signed)));
       sysAction("Signed! Submitting to Algorand…", "transaction");
-      const sub = await (await fetch("/api/wallet/submit", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ signedTxn:b64 })
-      })).json();
+      const sub = await (
+        await fetch("/api/wallet/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signedTxn: b64 }),
+        })
+      ).json();
       if (sub.error) throw new Error(sub.error);
-      const escrow: EscrowState = { status:"released", buyerAddress:activeAccount!.address, sellerAddress:deal.sellerAddress, amount:deal.finalPrice, txId:sub.txId, confirmedRound:sub.confirmedRound };
-      setState(p => ({ ...p, escrow }));
-      addActions([{ id:crypto.randomUUID(), agent:"system", agentName:"Algorand", type:"transaction",
-        content:`**Payment Confirmed!**\n- **TX:** \`${sub.txId}\`\n- **Round:** ${sub.confirmedRound}\n- **Amount:** ${deal.finalPrice} ALGO\n${sub.explorerUrl ? `- [View on Explorer](${sub.explorerUrl})` : ""}`,
-        data:{ escrow }, timestamp:new Date().toISOString() }]);
-    } catch(e) { sysAction(`**Wallet Error:** ${e instanceof Error ? e.message : "Failed"}`, "result"); }
+      const escrow: EscrowState = {
+        status: "released",
+        buyerAddress: activeAccount!.address,
+        sellerAddress: deal.sellerAddress,
+        amount: deal.finalPrice,
+        txId: sub.txId,
+        confirmedRound: sub.confirmedRound,
+      };
+      setState((p) => ({ ...p, escrow }));
+      addActions([
+        {
+          id: crypto.randomUUID(),
+          agent: "system",
+          agentName: "Algorand",
+          type: "transaction",
+          content: `**Payment Confirmed!**\n- **TX:** \`${sub.txId}\`\n- **Round:** ${sub.confirmedRound}\n- **Amount:** ${deal.finalPrice} ALGO\n${sub.explorerUrl ? `- [View on Explorer](${sub.explorerUrl})` : ""}`,
+          data: { escrow },
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } catch (e) {
+      sysAction(
+        `**Wallet Error:** ${e instanceof Error ? e.message : "Failed"}`,
+        "result",
+      );
+    }
   }
 
   async function execServer(deal: NegotiationSession) {
-    const r = await api<{success:boolean;escrow:EscrowState}>("/api/execute", { deal }, "executing");
-    if (r?.escrow) setState(p => ({ ...p, escrow:r.escrow }));
+    const r = await api<{ success: boolean; escrow: EscrowState }>(
+      "/api/execute",
+      { deal },
+      "executing",
+    );
+    if (r?.escrow) setState((p) => ({ ...p, escrow: r.escrow }));
   }
 
-  const canConfirm = state.selectedDeal && state.escrow.status === "idle" && state.phase === "completed";
+  const canConfirm =
+    state.selectedDeal &&
+    state.escrow.status === "idle" &&
+    state.phase === "completed";
   const phase = PHASE_LABEL[state.phase] ?? PHASE_LABEL.idle;
 
   return (
-    <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
-
+    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* ─── Chat main ─── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
-
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          minWidth: 0,
+        }}
+      >
         {/* Phase strip */}
         {state.phase !== "idle" && (
-          <div style={{
-            padding:"6px 20px",
-            borderBottom:"1px solid var(--border)",
-            display:"flex", alignItems:"center", gap:8,
-            background:"var(--bg-surface)",
-            flexShrink:0,
-          }}>
-            <span className="anim-blink" style={{ width:6, height:6, borderRadius:"50%", background:phase.color, display:"inline-block" }} />
-            <span style={{ fontSize:"0.75rem", color:phase.color, fontFamily:"var(--mono)", fontWeight:500 }}>{phase.text}</span>
+          <div
+            style={{
+              padding: "6px 20px",
+              borderBottom: "1px solid var(--border)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "var(--bg-surface)",
+              flexShrink: 0,
+            }}
+          >
+            <span
+              className="anim-blink"
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: phase.color,
+                display: "inline-block",
+              }}
+            />
+            <span
+              style={{
+                fontSize: "0.75rem",
+                color: phase.color,
+                fontFamily: "var(--mono)",
+                fontWeight: 500,
+              }}
+            >
+              {phase.text}
+            </span>
           </div>
         )}
 
@@ -177,26 +364,51 @@ export function ChatSection() {
 
         {/* Confirm bar */}
         {canConfirm && (
-          <div className="anim-fade-up" style={{
-            borderTop:"1px solid var(--border)",
-            padding:"12px 20px",
-            background:"var(--bg-surface)",
-            display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            flexShrink:0,
-          }}>
+          <div
+            className="anim-fade-up"
+            style={{
+              borderTop: "1px solid var(--border)",
+              padding: "12px 20px",
+              background: "var(--bg-surface)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
             <div>
-              <p style={{ fontSize:"0.8375rem", fontWeight:600, color:"var(--text-1)", marginBottom:2 }}>
-                Purchase from <span style={{ color:"var(--blue-bright)" }}>{state.selectedDeal!.sellerName}</span>
+              <p
+                style={{
+                  fontSize: "0.8375rem",
+                  fontWeight: 600,
+                  color: "var(--text-1)",
+                  marginBottom: 2,
+                }}
+              >
+                Purchase from{" "}
+                <span style={{ color: "var(--blue-bright)" }}>
+                  {state.selectedDeal!.sellerName}
+                </span>
               </p>
-              <p style={{ fontSize:"0.75rem", color:"var(--text-3)" }}>
-                {state.selectedDeal!.finalPrice} ALGO — {activeAccount ? "wallet signature required" : "server demo"}
+              <p style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                {state.selectedDeal!.finalPrice} ALGO —{" "}
+                {activeAccount ? "wallet signature required" : "server demo"}
               </p>
             </div>
-            <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-              <button className="btn-secondary" onClick={() => setState(p => ({ ...p, selectedDeal:null, phase:"idle" }))}>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button
+                className="btn-secondary"
+                onClick={() =>
+                  setState((p) => ({ ...p, selectedDeal: null, phase: "idle" }))
+                }
+              >
                 <X size={12} /> Cancel
               </button>
-              <button className="btn-primary" onClick={() => execDeal(state.selectedDeal!)}>
+              <button
+                className="btn-primary"
+                onClick={() => execDeal(state.selectedDeal!)}
+              >
                 <CheckCircle size={13} />
                 {activeAccount ? "Confirm & Sign" : "Confirm & Pay"}
               </button>
@@ -205,36 +417,87 @@ export function ChatSection() {
         )}
 
         {/* Input */}
-        <div style={{ borderTop:"1px solid var(--border)", background:"var(--bg-surface)", flexShrink:0 }}>
+        <div
+          style={{
+            borderTop: "1px solid var(--border)",
+            background: "var(--bg-surface)",
+            flexShrink: 0,
+          }}
+        >
           {state.phase === "idle" && (
-            <div style={{ padding:"10px 16px 0", display:"flex", gap:6, overflowX:"auto" }}>
-              {SUGGESTIONS.map(s => (
-                <button key={s} className="btn-ghost" onClick={() => submit(s)}
-                  style={{ flexShrink:0, background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"5px 10px", fontSize:"0.75rem" }}>
+            <div
+              style={{
+                padding: "10px 16px 0",
+                display: "flex",
+                gap: 6,
+                overflowX: "auto",
+              }}
+            >
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  className="btn-ghost"
+                  onClick={() => submit(s)}
+                  style={{
+                    flexShrink: 0,
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "5px 10px",
+                    fontSize: "0.75rem",
+                  }}
+                >
                   <Sparkles size={11} color="var(--blue-bright)" />
                   {s}
                 </button>
               ))}
             </div>
           )}
-          <div style={{ padding:"10px 16px 14px", display:"flex", gap:10 }}>
+          <div style={{ padding: "10px 16px 14px", display: "flex", gap: 10 }}>
             <input
               className="trae-input"
               value={msg}
-              onChange={e => setMsg(e.target.value)}
-              onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); submit(msg); } }}
-              placeholder={loading ? "Agent is working…" : "Tell the agent what you want to buy…"}
-              disabled={loading || !["idle","completed","error"].includes(state.phase)}
-              style={{ flex:1 }}
+              onChange={(e) => setMsg(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit(msg);
+                }
+              }}
+              placeholder={
+                loading
+                  ? "Agent is working…"
+                  : "Tell the agent what you want to buy…"
+              }
+              disabled={
+                loading || !["idle", "completed", "error"].includes(state.phase)
+              }
+              style={{ flex: 1 }}
             />
             <button
               className="btn-primary"
               onClick={() => submit(msg)}
-              disabled={loading || !msg.trim() || !["idle","completed","error"].includes(state.phase)}
-              style={{ flexShrink:0, padding:"0.5rem 1rem" }}>
-              {loading
-                ? <div className="anim-spin" style={{ width:14,height:14,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#fff" }} />
-                : <Send size={14} />}
+              disabled={
+                loading ||
+                !msg.trim() ||
+                !["idle", "completed", "error"].includes(state.phase)
+              }
+              style={{ flexShrink: 0, padding: "0.5rem 1rem" }}
+            >
+              {loading ? (
+                <div
+                  className="anim-spin"
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(255,255,255,0.2)",
+                    borderTopColor: "#fff",
+                  }}
+                />
+              ) : (
+                <Send size={14} />
+              )}
               {loading ? "" : "Send"}
             </button>
           </div>
@@ -242,43 +505,126 @@ export function ChatSection() {
       </div>
 
       {/* ─── Right sidebar ─── */}
-      <aside className="scroll" style={{
-        width:280,
-        borderLeft:"1px solid var(--border)",
-        background:"var(--bg-surface)",
-        display:"flex", flexDirection:"column",
-        overflow:"hidden",
-      }}>
-
+      <aside
+        className="scroll"
+        style={{
+          width: 280,
+          borderLeft: "1px solid var(--border)",
+          background: "var(--bg-surface)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
         {/* Auto-Buy */}
-        <div style={{ padding:"12px 14px", borderBottom:"1px solid var(--border)", flexShrink:0 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <div
+          style={{
+            padding: "12px 14px",
+            borderBottom: "1px solid var(--border)",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Bot size={14} color="var(--text-3)" />
-              <span style={{ fontSize:"0.8rem", fontWeight:600, color:"var(--text-2)" }}>Auto-Buy</span>
+              <span
+                style={{
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  color: "var(--text-2)",
+                }}
+              >
+                Auto-Buy
+              </span>
             </div>
             <button
-              onClick={() => setState(p => ({ ...p, autoBuy:!p.autoBuy }))}
-              style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:6, color:"var(--text-3)", fontSize:"0.75rem" }}>
-              {state.autoBuy
-                ? <><ToggleRight size={20} color="var(--blue-bright)" /><span style={{ color:"var(--blue-bright)", fontWeight:600, fontSize:"0.75rem" }}>ON</span></>
-                : <><ToggleLeft size={20} /><span>OFF</span></>}
+              onClick={() => setState((p) => ({ ...p, autoBuy: !p.autoBuy }))}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                color: "var(--text-3)",
+                fontSize: "0.75rem",
+              }}
+            >
+              {state.autoBuy ? (
+                <>
+                  <ToggleRight size={20} color="var(--blue-bright)" />
+                  <span
+                    style={{
+                      color: "var(--blue-bright)",
+                      fontWeight: 600,
+                      fontSize: "0.75rem",
+                    }}
+                  >
+                    ON
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ToggleLeft size={20} />
+                  <span>OFF</span>
+                </>
+              )}
             </button>
           </div>
-          <p style={{ fontSize:"0.7rem", color:"var(--text-4)", marginTop:4 }}>
+          <p
+            style={{ fontSize: "0.7rem", color: "var(--text-4)", marginTop: 4 }}
+          >
             Agent executes the best deal automatically
           </p>
         </div>
 
-        <div className="scroll" style={{ flex:1, padding:"12px 14px", display:"flex", flexDirection:"column", gap:14 }}>
-
+        <div
+          className="scroll"
+          style={{
+            flex: 1,
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
           {/* Wallet */}
           {activeAccount && (
-            <div style={{ background:"rgba(43,127,255,0.06)", border:"1px solid var(--blue-border)", borderRadius:"var(--radius-md)", padding:"10px 12px" }}>
-              <p style={{ fontSize:"0.65rem", fontWeight:600, color:"var(--blue-bright)", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>
+            <div
+              style={{
+                background: "rgba(43,127,255,0.06)",
+                border: "1px solid var(--blue-border)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 12px",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.65rem",
+                  fontWeight: 600,
+                  color: "var(--blue-bright)",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
                 Wallet
               </p>
-              <p style={{ fontFamily:"var(--mono)", fontSize:"0.7rem", color:"var(--text-2)", wordBreak:"break-all", lineHeight:1.5 }}>
+              <p
+                style={{
+                  fontFamily: "var(--mono)",
+                  fontSize: "0.7rem",
+                  color: "var(--text-2)",
+                  wordBreak: "break-all",
+                  lineHeight: 1.5,
+                }}
+              >
                 {activeAccount.address}
               </p>
             </div>
@@ -287,14 +633,29 @@ export function ChatSection() {
           {/* Discovered listings */}
           {state.listings.length > 0 && (
             <div>
-              <p className="section-label" style={{ paddingInline:0, marginBottom:6 }}>
-                <ArrowRight size={10} style={{ display:"inline", marginRight:4 }} />
+              <p
+                className="section-label"
+                style={{ paddingInline: 0, marginBottom: 6 }}
+              >
+                <ArrowRight
+                  size={10}
+                  style={{ display: "inline", marginRight: 4 }}
+                />
                 Discovered ({state.listings.length})
               </p>
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                {state.listings.map(l => {
-                  const neg = state.negotiations.find(n => n.listingTxId === l.txId);
-                  return <ListingCard key={l.txId} listing={l} negotiation={neg} isSelected={state.selectedDeal?.listingTxId === l.txId} />;
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {state.listings.map((l) => {
+                  const neg = state.negotiations.find(
+                    (n) => n.listingTxId === l.txId,
+                  );
+                  return (
+                    <ListingCard
+                      key={l.txId}
+                      listing={l}
+                      negotiation={neg}
+                      isSelected={state.selectedDeal?.listingTxId === l.txId}
+                    />
+                  );
                 })}
               </div>
             </div>
@@ -304,11 +665,23 @@ export function ChatSection() {
           <TransactionStatus escrow={state.escrow} />
 
           {state.actions.length === 0 && (
-            <div style={{ textAlign:"center", paddingTop:32 }}>
-              <div style={{ width:40,height:40,borderRadius:"var(--radius-md)",background:"var(--bg-card)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px" }}>
+            <div style={{ textAlign: "center", paddingTop: 32 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--bg-card)",
+                  border: "1px solid var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 10px",
+                }}
+              >
                 <Zap size={18} color="var(--text-4)" />
               </div>
-              <p style={{ fontSize:"0.75rem", color:"var(--text-4)" }}>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-4)" }}>
                 Send a message to start
               </p>
             </div>
