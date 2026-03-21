@@ -7,12 +7,16 @@ function isRecoverableInitError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
     lower.includes("seed length must be 32") ||
+    lower.includes("must be base64 of a 64-byte") ||
     lower.includes("localnet") ||
     lower.includes("dispenser") ||
     lower.includes("econnrefused") ||
     lower.includes("network") ||
     lower.includes("fetch failed") ||
-    lower.includes("invalid")
+    lower.includes("invalid") ||
+    lower.includes("overspend") ||
+    lower.includes("insufficient") ||
+    lower.includes("balance")
   );
 }
 

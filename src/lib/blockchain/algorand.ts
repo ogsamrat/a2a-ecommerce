@@ -63,6 +63,33 @@ export async function getBalance(address: string): Promise<number> {
   return info.balance.algos;
 }
 
+function getTestnetAccountFromEnv(): ReturnType<
+  typeof algosdk.mnemonicToSecretKey
+> {
+  const raw = process.env.AVM_PRIVATE_KEY?.trim();
+  if (!raw) {
+    throw new Error(
+      "AVM_PRIVATE_KEY is required when ALGORAND_NETWORK=testnet",
+    );
+  }
+
+  // Support mnemonic input as a convenience for local setups.
+  if (raw.includes(" ")) {
+    return algosdk.mnemonicToSecretKey(raw);
+  }
+
+  const decoded = Buffer.from(raw, "base64");
+  if (decoded.length !== 64) {
+    throw new Error(
+      "AVM_PRIVATE_KEY must be base64 of a 64-byte Algorand secret key",
+    );
+  }
+
+  const sk = Uint8Array.from(decoded);
+  const addr = new algosdk.Address(sk.slice(32));
+  return { addr, sk };
+}
+
 export async function initAccounts(): Promise<{
   buyer: AccountInfo;
   sellers: Record<string, AccountInfo>;
@@ -84,11 +111,8 @@ export async function initAccounts(): Promise<{
 
   let buyerAddr: string;
 
-  if (isTestnet() && process.env.AVM_PRIVATE_KEY) {
-    const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
-    const account = algosdk.mnemonicToSecretKey(
-      algosdk.secretKeyToMnemonic(secretKey),
-    );
+  if (isTestnet()) {
+    const account = getTestnetAccountFromEnv();
     buyerAddr = account.addr.toString();
     algorand.setSignerFromAccount(account);
   } else {
