@@ -8,10 +8,21 @@ function truncateAddr(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
+function isUserClosedWalletModal(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes("modal is closed by user") ||
+    msg.includes("cancel") ||
+    msg.includes("user rejected")
+  );
+}
+
 export function WalletConnect() {
   const { wallets, activeAccount, activeWallet, isReady } = useWallet();
   const [isOpen, setIsOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
+  const [connectError, setConnectError] = useState("");
 
   useEffect(() => {
     if (!activeAccount?.address) {
@@ -98,14 +109,28 @@ export function WalletConnect() {
               <p className="wallet-menu-subtitle">
                 Choose your preferred wallet
               </p>
+              {connectError && (
+                <p className="status-bad" role="alert">
+                  {connectError}
+                </p>
+              )}
             </div>
             <div className="wallet-menu-body">
               {wallets.map((w: Wallet) => (
                 <button
                   key={w.id}
-                  onClick={() => {
-                    w.connect();
-                    setIsOpen(false);
+                  onClick={async () => {
+                    setConnectError("");
+                    try {
+                      await w.connect();
+                      setIsOpen(false);
+                    } catch (error) {
+                      if (!isUserClosedWalletModal(error)) {
+                        setConnectError(
+                          "Wallet connection failed. Please try again.",
+                        );
+                      }
+                    }
                   }}
                   className="wallet-option"
                 >

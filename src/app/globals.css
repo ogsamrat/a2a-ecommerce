@@ -778,6 +778,15 @@ p {
   overflow: hidden;
 }
 
+.sidebar-wallet .wallet-menu {
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: calc(100% + 0.45rem);
+  width: auto;
+  max-height: min(340px, 58vh);
+}
+
 .wallet-menu-head {
   padding: 0.75rem 0.8rem;
   border-bottom: 1px solid var(--border);
@@ -807,6 +816,8 @@ p {
   padding: 0.4rem;
   display: grid;
   gap: 0.3rem;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .wallet-option,
@@ -1022,6 +1033,15 @@ p {
 
   .market-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar-wallet .wallet-menu {
+    left: 0;
+    right: auto;
+    top: calc(100% + 0.45rem);
+    bottom: auto;
+    width: min(320px, 92vw);
+    max-height: min(340px, 60vh);
   }
 }
 
