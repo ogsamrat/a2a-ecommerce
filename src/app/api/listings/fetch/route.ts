@@ -1,24 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import algosdk from "algosdk";
 import {
   getIndexer,
   getNetworkMode,
-  getStoredAccounts,
+  type NetworkMode,
 } from "@/lib/blockchain/algorand";
-import { getSeedListings } from "@/lib/blockchain/listings";
 import type { OnChainListing } from "@/lib/agents/types";
+import {
+  getRememberedListings,
+  rememberListings,
+} from "@/lib/listings/registry";
 
-const QUERY_TIMEOUT_MS = 1800;
+function getQueryTimeoutMs(network: NetworkMode): number {
+  const raw = process.env.INDEXER_QUERY_TIMEOUT_MS;
+  const parsed = Number(raw ?? "");
+  if (Number.isFinite(parsed) && parsed >= 1000) return Math.floor(parsed);
+  return network === "testnet" ? 9000 : 2500;
+}
 
-function applyFilters(
-  listings: OnChainListing[],
-  serviceType?: string,
-  maxBudget = Number.POSITIVE_INFINITY,
-): OnChainListing[] {
-  return listings.filter((listing) => {
-    if (serviceType && listing.type !== serviceType) return false;
-    if (listing.price > maxBudget) return false;
-    return true;
-  });
+function normalizeType(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
 }
 
 async function withTimeout<T>(
@@ -33,6 +37,21 @@ async function withTimeout<T>(
   ]);
 }
 
+async function withTimeoutRetry<T>(
+  queryFactory: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  try {
+    return await withTimeout(queryFactory(), timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (!message.includes("timeout")) throw error;
+
+    const retryTimeoutMs = Math.min(timeoutMs * 2, 20000);
+    return await withTimeout(queryFactory(), retryTimeoutMs);
+  }
+}
+
 async function isLocalIndexerReachable(): Promise<boolean> {
   try {
     const res = await fetch("http://localhost:8980/health", {
@@ -45,9 +64,47 @@ async function isLocalIndexerReachable(): Promise<boolean> {
   }
 }
 
+function filterLocalListings(
+  listings: OnChainListing[],
+  serviceType: string | undefined,
+  maxBudget: number,
+  sellerAddress: string | undefined,
+): OnChainListing[] {
+  return listings.filter((listing) => {
+    if (sellerAddress && listing.seller !== sellerAddress) return false;
+    if (
+      serviceType &&
+      normalizeType(String(listing.type ?? "unknown")) !== serviceType
+    ) {
+      return false;
+    }
+    return Number(listing.price) <= maxBudget;
+  });
+}
+
+function mergeListings(
+  primary: OnChainListing[],
+  fallback: OnChainListing[],
+): OnChainListing[] {
+  const byId = new Map<string, OnChainListing>();
+  for (const item of fallback) {
+    if (!item.txId) continue;
+    byId.set(item.txId, item);
+  }
+  for (const item of primary) {
+    if (!item.txId) continue;
+    byId.set(item.txId, item);
+  }
+  return [...byId.values()].sort((a, b) => {
+    if (b.round !== a.round) return b.round - a.round;
+    return b.timestamp - a.timestamp;
+  });
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const serviceType = req.nextUrl.searchParams.get("type") ?? undefined;
+    const rawType = req.nextUrl.searchParams.get("type") ?? "";
+    const serviceType = rawType ? normalizeType(rawType) : undefined;
     const maxBudgetRaw = req.nextUrl.searchParams.get("maxBudget") ?? "999999";
     const maxBudget = Number(maxBudgetRaw);
     const sellerAddress = req.nextUrl.searchParams.get("seller") ?? undefined;
@@ -59,29 +116,26 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    if (
-      serviceType &&
-      !["cloud-storage", "api-access", "compute", "hosting"].includes(
-        serviceType,
-      )
-    ) {
-      return NextResponse.json(
-        { error: "Unsupported service type" },
-        { status: 400 },
-      );
-    }
-
     const network = getNetworkMode();
+    const queryTimeoutMs = getQueryTimeoutMs(network);
+    const remembered = await getRememberedListings();
+    const rememberedFiltered = filterLocalListings(
+      remembered,
+      serviceType,
+      maxBudget,
+      sellerAddress,
+    );
 
     if (network === "localnet") {
       const reachable = await isLocalIndexerReachable();
       if (!reachable) {
         return NextResponse.json({
-          listings: [],
-          count: 0,
+          listings: rememberedFiltered,
+          count: rememberedFiltered.length,
           network,
+          source: "memory",
           warning:
-            "Local indexer is not reachable on http://localhost:8980. Start localnet or set ALGORAND_NETWORK=testnet.",
+            "Local indexer is not reachable on http://localhost:8980. Showing remembered listings only.",
         });
       }
     }
@@ -90,62 +144,73 @@ export async function GET(req: NextRequest) {
 
     const listings: OnChainListing[] = [];
     const notePrefix = Buffer.from("a2a-listing:").toString("base64");
-    const accountState = getStoredAccounts();
-
-    if (!sellerAddress && !accountState) {
-      const demoListings = applyFilters(
-        getSeedListings(),
-        serviceType,
-        maxBudget,
-      );
-      return NextResponse.json({
-        listings: demoListings,
-        count: demoListings.length,
-        network,
-        source: "demo",
-      });
-    }
-
-    const searchAddresses = sellerAddress
-      ? [sellerAddress]
-      : Object.values(accountState?.sellerAddrs ?? {});
+    const searchAddresses = sellerAddress ? [sellerAddress] : [];
 
     const allTxns: Array<{
       id?: string;
       sender?: string;
       note?: unknown;
-      confirmedRound?: number;
+      confirmedRound?: number | bigint;
     }> = [];
 
     if (searchAddresses.length > 0) {
+      let hadAddressQueryTimeout = false;
       for (const address of searchAddresses) {
         try {
-          const searchResult = await withTimeout(
-            indexer
-              .searchForTransactions()
-              .address(address)
-              .notePrefix(notePrefix)
-              .txType("pay")
-              .limit(20)
-              .do(),
-            QUERY_TIMEOUT_MS,
+          const searchResult = await withTimeoutRetry(
+            () =>
+              indexer
+                .searchForTransactions()
+                .address(address)
+                .notePrefix(notePrefix)
+                .txType("pay")
+                .limit(100)
+                .do(),
+            queryTimeoutMs,
           );
           allTxns.push(...(searchResult.transactions ?? []));
-        } catch {
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message.toLowerCase() : "";
+          if (message.includes("timeout")) {
+            hadAddressQueryTimeout = true;
+          }
           // skip noisy address query failures and continue with remaining addresses
         }
       }
+
+      if (!allTxns.length && hadAddressQueryTimeout) {
+        const merged = mergeListings([], rememberedFiltered);
+        return NextResponse.json({
+          listings: merged,
+          count: merged.length,
+          network,
+          source: "memory",
+          warning:
+            "Indexer query timed out while loading seller listings; showing remembered listings.",
+        });
+      }
     } else {
       try {
-        const searchResult = await withTimeout(
-          indexer
+        let currentRound = 0;
+        try {
+          const health = await withTimeoutRetry(
+            () => indexer.makeHealthCheck().do(),
+            2000,
+          );
+          currentRound = Number(health.round ?? 0);
+        } catch {}
+
+        const searchResult = await withTimeoutRetry(() => {
+          let req = indexer
             .searchForTransactions()
             .notePrefix(notePrefix)
             .txType("pay")
-            .limit(25)
-            .do(),
-          QUERY_TIMEOUT_MS,
-        );
+            .limit(250);
+          if (currentRound > 0)
+            req = req.minRound(Math.max(0, currentRound - 500000));
+          return req.do();
+        }, queryTimeoutMs);
         allTxns.push(...(searchResult.transactions ?? []));
       } catch (error) {
         const message =
@@ -155,18 +220,13 @@ export async function GET(req: NextRequest) {
           message.includes("searching for transaction") ||
           message.includes("timeout")
         ) {
-          const demoListings = applyFilters(
-            getSeedListings(),
-            serviceType,
-            maxBudget,
-          );
+          const merged = mergeListings([], rememberedFiltered);
           return NextResponse.json({
-            listings: demoListings,
-            count: demoListings.length,
+            listings: merged,
+            count: merged.length,
             network,
-            source: "demo",
-            warning:
-              "Indexer query timed out; showing demo marketplace listings.",
+            source: "memory",
+            warning: "Indexer query timed out; showing remembered listings.",
           });
         }
         throw error;
@@ -193,6 +253,12 @@ export async function GET(req: NextRequest) {
         if (!noteStr.startsWith("a2a-listing:")) continue;
         const data = JSON.parse(noteStr.slice("a2a-listing:".length));
 
+        try {
+          algosdk.Address.fromString(String(data.seller));
+        } catch {
+          continue;
+        }
+
         const listing: OnChainListing = {
           txId: txn.id ?? "",
           sender: txn.sender ?? "",
@@ -206,7 +272,8 @@ export async function GET(req: NextRequest) {
           round: Number(txn.confirmedRound ?? 0),
         };
 
-        if (serviceType && listing.type !== serviceType) continue;
+        if (serviceType && normalizeType(String(listing.type)) !== serviceType)
+          continue;
         if (listing.price > maxBudget) continue;
 
         listings.push(listing);
@@ -215,21 +282,43 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const finalListings = listings.length
-      ? listings
-      : !sellerAddress
-        ? applyFilters(getSeedListings(), serviceType, maxBudget)
-        : [];
+    await rememberListings(listings);
+    const merged = mergeListings(listings, rememberedFiltered);
 
     return NextResponse.json({
-      listings: finalListings,
-      count: finalListings.length,
+      listings: merged,
+      count: merged.length,
       network,
-      source: listings.length ? "onchain" : "demo",
+      source: "onchain+memory",
     });
   } catch (error) {
+    const network = getNetworkMode();
+    const fallbackTypeRaw = req.nextUrl.searchParams.get("type") ?? "";
+    const fallbackServiceType = fallbackTypeRaw
+      ? normalizeType(fallbackTypeRaw)
+      : undefined;
+    const fallbackMaxBudgetRaw = req.nextUrl.searchParams.get("maxBudget");
+    const fallbackMaxBudget = Number(fallbackMaxBudgetRaw ?? "999999");
+    const safeMaxBudget =
+      Number.isFinite(fallbackMaxBudget) && fallbackMaxBudget >= 0
+        ? fallbackMaxBudget
+        : Number.MAX_SAFE_INTEGER;
+    const fallbackSeller = req.nextUrl.searchParams.get("seller") ?? undefined;
+    const remembered = await getRememberedListings();
+    const filtered = filterLocalListings(
+      remembered,
+      fallbackServiceType,
+      safeMaxBudget,
+      fallbackSeller,
+    );
     const msg =
       error instanceof Error ? error.message : "Failed to fetch listings";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({
+      listings: filtered,
+      count: filtered.length,
+      network,
+      source: "memory",
+      warning: `Listing fetch degraded: ${msg}`,
+    });
   }
 }

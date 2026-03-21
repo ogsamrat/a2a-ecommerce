@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import algosdk from "algosdk";
 import { createHash, randomBytes } from "crypto";
 import { getClient } from "@/lib/blockchain/algorand";
+import { rememberListing } from "@/lib/listings/registry";
+
+function normalizeType(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,12 +18,17 @@ export async function POST(req: NextRequest) {
       await req.json();
 
     const parsedPrice = Number(price);
+    const normalizedType = normalizeType(type);
 
-    if (!senderAddress || !type || !service || !description) {
+    if (!senderAddress || !service || !description) {
       return NextResponse.json(
-        { error: "senderAddress, type, service, description required" },
+        { error: "senderAddress, service, description required" },
         { status: 400 },
       );
+    }
+
+    if (!normalizedType) {
+      return NextResponse.json({ error: "type is required" }, { status: 400 });
     }
 
     if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
@@ -38,7 +52,7 @@ export async function POST(req: NextRequest) {
     const commitment = createHash("sha256").update(preimage).digest("hex");
 
     const noteData = {
-      type,
+      type: normalizedType,
       service,
       price: parsedPrice,
       seller: senderAddress,
@@ -63,6 +77,19 @@ export async function POST(req: NextRequest) {
     const unsignedTxnB64 = Buffer.from(
       algosdk.encodeUnsignedTransaction(txn),
     ).toString("base64");
+
+    await rememberListing({
+      txId: txn.txID(),
+      sender: senderAddress,
+      type: normalizedType,
+      service,
+      price: parsedPrice,
+      seller: senderAddress,
+      description: String(description ?? ""),
+      timestamp: Number(noteData.timestamp ?? Date.now()),
+      zkCommitment: commitment,
+      round: 0,
+    });
 
     return NextResponse.json({
       unsignedTxn: unsignedTxnB64,

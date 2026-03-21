@@ -6,59 +6,84 @@ import { DashboardShell } from "@/components/dashboard-shell";
 import { apiRequest, resetApiState } from "@/lib/api/client";
 import type { OnChainListing } from "@/lib/agents/types";
 
-const TYPES = ["", "cloud-storage", "api-access", "compute", "hosting"];
-
 function asError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
 export default function MarketplacePage() {
   const [listings, setListings] = useState<OnChainListing[]>([]);
+  const [reputationByAgent, setReputationByAgent] = useState<
+    Record<string, number>
+  >({});
   const [type, setType] = useState("");
   const [maxBudget, setMaxBudget] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [resetStatus, setResetStatus] = useState("");
   const hasInitialized = useRef(false);
 
-  const initDemoMarketplace = useCallback(async () => {
+  const loadReputations = useCallback(async (items: OnChainListing[]) => {
+    const agents = [
+      ...new Set(items.map((item) => item.seller).filter(Boolean)),
+    ];
+    if (!agents.length) {
+      setReputationByAgent({});
+      return;
+    }
+
     try {
-      await apiRequest<{ success?: boolean }>("/api/init", { method: "POST" });
+      const data = await apiRequest<{
+        results?: Array<{ agent: string; reputation: number }>;
+      }>("/api/reputation/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agents }),
+      });
+
+      const next: Record<string, number> = {};
+      for (const item of data.results ?? []) {
+        next[item.agent] = item.reputation;
+      }
+      setReputationByAgent(next);
     } catch {
-      // Ignore init failures here; fetch endpoint will still return a safe response.
+      setReputationByAgent({});
     }
   }, []);
 
   const fetchListings = useCallback(async () => {
     setLoading(true);
     setError("");
+    setWarning("");
     setResetStatus("");
     try {
       const params = new URLSearchParams();
       if (type) params.set("type", type);
       if (maxBudget.trim()) params.set("maxBudget", maxBudget.trim());
 
-      const data = await apiRequest<{ listings?: OnChainListing[] }>(
-        `/api/listings/fetch?${params.toString()}`,
-      );
-      setListings(data.listings ?? []);
+      const data = await apiRequest<{
+        listings?: OnChainListing[];
+        warning?: string;
+      }>(`/api/listings/fetch?${params.toString()}`);
+      const nextListings = data.listings ?? [];
+      setListings(nextListings);
+      setWarning(data.warning ?? "");
+      await loadReputations(nextListings);
     } catch (err) {
       setError(asError(err));
       setListings([]);
+      setReputationByAgent({});
     } finally {
       setLoading(false);
     }
-  }, [maxBudget, type]);
+  }, [loadReputations, maxBudget, type]);
 
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
     void fetchListings();
-    void initDemoMarketplace().then(() => {
-      void fetchListings();
-    });
-  }, [fetchListings, initDemoMarketplace]);
+  }, [fetchListings]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -69,6 +94,12 @@ export default function MarketplacePage() {
       ),
     );
   }, [listings, query]);
+
+  function formatReputation(reputation: number | undefined): string {
+    if (reputation === undefined) return "Reputation N/A";
+    const normalized = reputation > 100 ? reputation / 100 : reputation;
+    return `Reputation ${normalized.toFixed(2)}/100`;
+  }
 
   async function onResetApi() {
     setResetStatus("Resetting API state...");
@@ -99,17 +130,18 @@ export default function MarketplacePage() {
             />
           </div>
 
-          <select
+          <input
             className="cyber-select"
             value={type}
             onChange={(e) => setType(e.target.value)}
-          >
-            {TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t || "all"}
-              </option>
+            placeholder="type filter (optional)"
+            list="marketplace-type-suggestions"
+          />
+          <datalist id="marketplace-type-suggestions">
+            {[...new Set(listings.map((item) => item.type))].map((t) => (
+              <option key={t} value={t} />
             ))}
-          </select>
+          </datalist>
 
           <input
             className="cyber-budget"
@@ -134,13 +166,14 @@ export default function MarketplacePage() {
           </>
         )}
         {resetStatus && <p className="status-muted">{resetStatus}</p>}
+        {warning && <p className="status-muted">{warning}</p>}
 
         <div className="product-grid">
           {filtered.map((item) => (
             <article key={item.txId} className="cyber-card product-card">
               <div className="product-top">
                 <span>{item.type}</span>
-                <span>Round {item.round}</span>
+                <span>{formatReputation(reputationByAgent[item.seller])}</span>
               </div>
               <h4>{item.service}</h4>
               <p>{item.seller}</p>

@@ -3,8 +3,8 @@ import {
   ArrowRight,
   Bot,
   CircleDollarSign,
+  Radar,
   Search,
-  ShieldCheck,
   Store,
 } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -29,10 +29,10 @@ const cards = [
     icon: Bot,
   },
   {
-    title: "System APIs",
-    copy: "Use premium analytics, reputation contract actions, wallet info, and API recovery tools.",
-    href: "/system",
-    icon: ShieldCheck,
+    title: "Observer",
+    copy: "Monitor on-chain listing activity, seller density, type distribution, and latest rounds.",
+    href: "/observer",
+    icon: Radar,
   },
 ];
 

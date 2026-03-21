@@ -111,12 +111,30 @@ export default function ChatPage() {
 
     try {
       if (!initialized) {
-        const initData = await apiRequest<{ actions?: AgentAction[] }>(
-          "/api/init",
-          { method: "POST" },
-        );
-        setInitialized(true);
-        setActions((prev) => [...prev, ...(initData.actions ?? [])]);
+        try {
+          const initData = await apiRequest<{ actions?: AgentAction[] }>(
+            "/api/init",
+            { method: "POST" },
+          );
+          setActions((prev) => [...prev, ...(initData.actions ?? [])]);
+        } catch (initError) {
+          setActions((prev) => [
+            ...prev,
+            {
+              id: `init-warning-${Date.now()}`,
+              agent: "system",
+              agentName: "Algorand",
+              type: "result",
+              content:
+                initError instanceof Error
+                  ? `Initialization warning: ${initError.message}. Continuing with direct on-chain discovery.`
+                  : "Initialization warning. Continuing with direct on-chain discovery.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        } finally {
+          setInitialized(true);
+        }
       }
 
       const intentData = await apiRequest<{

@@ -170,7 +170,7 @@ p {
 }
 
 .status-panel {
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .status-panel p {

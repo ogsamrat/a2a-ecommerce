@@ -67,13 +67,12 @@ export async function resetApiState(): Promise<{
   error?: string;
 }> {
   try {
-    const data = await apiRequest<{
-      success?: boolean;
-      demoMode?: boolean;
-      warning?: string;
-    }>("/api/init", { method: "POST" });
+    const data = await apiRequest<{ success?: boolean; warning?: string }>(
+      "/api/init",
+      { method: "POST" },
+    );
 
-    const initOk = data.success !== false || data.demoMode === true;
+    const initOk = data.success !== false;
     return {
       ok: initOk,
       warning: data.warning,

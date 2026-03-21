@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { initAccounts, getNetworkMode } from "@/lib/blockchain/algorand";
-import { postListingsOnChain } from "@/lib/blockchain/listings";
 import { createAction } from "@/lib/a2a/messaging";
 
 function isRecoverableInitError(message: string): boolean {
@@ -48,25 +47,13 @@ export async function POST() {
       ),
     );
 
-    actions.push(
-      createAction(
-        "system",
-        "Algorand",
-        "transaction",
-        "Posting service listings on-chain via 0 ALGO transactions...",
-      ),
-    );
-
-    const listingTxIds = await postListingsOnChain();
+    const listingTxIds: string[] = [];
     actions.push(
       createAction(
         "system",
         "Algorand",
         "result",
-        `**${listingTxIds.length} listings** posted on-chain!\n` +
-          listingTxIds
-            .map((tx, i) => `• Listing ${i + 1}: \`${tx.slice(0, 20)}...\``)
-            .join("\n"),
+        "Initialization complete. No seeded listings are created. Marketplace and chat will use only user-created on-chain listings.",
         { listingTxIds },
       ),
     );
@@ -82,14 +69,13 @@ export async function POST() {
     if (isRecoverableInitError(msg)) {
       return NextResponse.json({
         success: false,
-        demoMode: true,
         listingTxIds: [],
         actions: [
           createAction(
             "system",
             "Algorand",
             "result",
-            `Demo mode active: ${msg}. Using fallback marketplace listings.`,
+            `Initialization warning: ${msg}. No seeded or fallback listings are used.`,
             { warning: msg },
           ),
         ],

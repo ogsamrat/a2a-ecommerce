@@ -17,10 +17,8 @@ import {
   resetApiState,
 } from "@/lib/api/client";
 
-type ListingType = "cloud-storage" | "api-access" | "compute" | "hosting";
-
 interface ListingForm {
-  type: ListingType;
+  type: string;
   service: string;
   price: string;
   description: string;
@@ -41,15 +39,22 @@ const defaultForm: ListingForm = {
   description: "",
 };
 
-const typeOptions: ListingType[] = [
+const suggestedTypes = [
   "cloud-storage",
   "api-access",
   "compute",
   "hosting",
-];
+] as const;
 
 function getErrorText(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
+}
+
+function normalizeTypePreview(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
 }
 
 export default function SellPage() {
@@ -59,6 +64,7 @@ export default function SellPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [warning, setWarning] = useState<string>("");
   const [resetStatus, setResetStatus] = useState<string>("");
   const [myListings, setMyListings] = useState<ApiListing[]>([]);
   const [loadingListings, setLoadingListings] = useState(false);
@@ -73,6 +79,7 @@ export default function SellPage() {
     const price = Number(form.price);
     return (
       !!account &&
+      !!form.type.trim() &&
       !!form.service.trim() &&
       !!form.description.trim() &&
       Number.isFinite(price) &&
@@ -80,22 +87,41 @@ export default function SellPage() {
     );
   }, [account, form]);
 
+  const normalizedType = useMemo(
+    () => normalizeTypePreview(form.type),
+    [form.type],
+  );
+
   async function refreshListings() {
-    if (!account) return;
+    if (!account) {
+      setMyListings([]);
+      return;
+    }
     setLoadingListings(true);
     setError("");
+    setWarning("");
     setResetStatus("");
     try {
-      const data = await apiRequest<{ listings?: ApiListing[] }>(
-        `/api/listings/fetch?seller=${encodeURIComponent(account.address)}`,
-      );
+      const data = await apiRequest<{
+        listings?: ApiListing[];
+        warning?: string;
+      }>(`/api/listings/fetch?seller=${encodeURIComponent(account.address)}`);
       setMyListings(data.listings ?? []);
+      setWarning(data.warning ?? "");
     } catch (err) {
       setError(getErrorText(err));
     } finally {
       setLoadingListings(false);
     }
   }
+
+  useEffect(() => {
+    if (!account) {
+      setMyListings([]);
+      return;
+    }
+    void refreshListings();
+  }, [account?.address]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -106,6 +132,7 @@ export default function SellPage() {
 
     setBusy(true);
     setError("");
+    setWarning("");
     setResetStatus("");
     setMessage("Building unsigned listing transaction...");
 
@@ -180,22 +207,28 @@ export default function SellPage() {
           <form className="cyber-form" onSubmit={onSubmit}>
             <label>
               <span>TYPE</span>
-              <select
-                className="cyber-select"
+              <input
                 value={form.type}
                 onChange={(e) =>
                   setForm((p) => ({
                     ...p,
-                    type: e.target.value as ListingType,
+                    type: e.target.value,
                   }))
                 }
-              >
-                {typeOptions.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
+                className="cyber-select"
+                list="listing-type-suggestions"
+                placeholder="> compute-gpu"
+                required
+              />
+              <datalist id="listing-type-suggestions">
+                {suggestedTypes.map((type) => (
+                  <option key={type} value={type} />
                 ))}
-              </select>
+              </datalist>
+              <p className="status-muted">
+                Stored as: {normalizedType || "-"} (lowercase,
+                spaces/underscores converted to hyphen)
+              </p>
             </label>
 
             <label>
@@ -268,6 +301,7 @@ export default function SellPage() {
             </>
           )}
           {resetStatus && <p className="status-muted">{resetStatus}</p>}
+          {warning && <p className="status-muted">{warning}</p>}
         </article>
 
         <article className="cyber-card terminal-panel">
