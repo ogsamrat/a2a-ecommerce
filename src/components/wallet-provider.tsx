@@ -16,7 +16,7 @@ export function AlgorandWalletProvider({
         WalletId.DEFLY,
         {
           id: WalletId.LUTE,
-          options: { siteName: "AgentDEX" },
+          options: { siteName: "AlgoAgent Market" },
         },
       ],
       defaultNetwork: NetworkId.TESTNET,

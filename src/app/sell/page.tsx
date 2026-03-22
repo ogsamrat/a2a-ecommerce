@@ -410,7 +410,8 @@ export default function SellPage() {
                 </span>
               </div>
             ))}
-            {!myListings.length && (
+            {loadingListings && <p className="status-muted">Loading...</p>}
+            {!loadingListings && !myListings.length && (
               <p className="status-muted">No listings loaded yet.</p>
             )}
           </div>

@@ -31,7 +31,9 @@ function asRegisteredResult(
     new DataView(raw.buffer, raw.byteOffset + 24, 8).getBigUint64(0),
   );
   const reputation =
-    feedbackCount > 0 ? Math.round((totalScore * 100) / feedbackCount) : 0;
+    feedbackCount > 0
+      ? Math.max(0, Math.min(100, Math.round(totalScore / feedbackCount)))
+      : 0;
 
   return {
     agent: agentAddress,

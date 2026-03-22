@@ -40,7 +40,7 @@ export default function DashboardPage() {
   return (
     <DashboardShell
       title="Dashboard"
-      subtitle="Control center for listing, discovery, negotiation, and settlement."
+      subtitle="Launch listings, monitor orders, and run agent purchases."
     >
       <section className="grid-cards">
         {cards.map((card) => {

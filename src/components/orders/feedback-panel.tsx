@@ -1,9 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, MessageSquare } from "lucide-react";
 import type { FeedbackSummary, OrderRecord } from "@/lib/agents/types";
 import { apiRequest } from "@/lib/api/client";
+
+function isWalletCancelError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("cancel") ||
+    normalized.includes("reject") ||
+    normalized.includes("declin") ||
+    normalized.includes("empty signature")
+  );
+}
 
 export function FeedbackPanel({
   buyerAddress,
@@ -29,12 +40,47 @@ export function FeedbackPanel({
     [feedback],
   );
 
+  const canPublishOnChain = Boolean(buyerAddress && order);
+  const canUndo = Boolean(feedback && !feedback.isUndone);
+
+  useEffect(() => {
+    if (!order) {
+      setRating("5");
+      setComment("");
+      return;
+    }
+
+    if (feedback) {
+      const nextRating = Math.max(1, Math.min(5, Math.round(feedback.rating)));
+      setRating(String(nextRating));
+      setComment(feedback.comment ?? "");
+      return;
+    }
+
+    setRating("5");
+    setComment("");
+  }, [
+    order?.orderTxId,
+    feedback?.updatedAt,
+    feedback?.rating,
+    feedback?.comment,
+  ]);
+
   async function submit(publishOnChain: boolean): Promise<void> {
     if (!buyerAddress || !order) return;
     setSaving(true);
     setMsg("");
     setError("");
     try {
+      const parsedRating = Number(rating);
+      if (
+        !Number.isFinite(parsedRating) ||
+        parsedRating < 1 ||
+        parsedRating > 5
+      ) {
+        throw new Error("Rating must be between 1 and 5");
+      }
+
       const submitRes = await apiRequest<{
         feedback: FeedbackSummary;
         wasCreated: boolean;
@@ -44,43 +90,57 @@ export function FeedbackPanel({
         body: JSON.stringify({
           buyerAddress,
           orderTxId: order.orderTxId,
-          rating: Number(rating),
+          rating: parsedRating,
           comment,
         }),
       });
       onFeedback(submitRes.feedback);
       setMsg("Feedback saved for marketplace reputation.");
 
-      if (publishOnChain && submitRes.wasCreated) {
-        const score = Math.max(
-          0,
-          Math.min(100, Math.round((Number(rating) / 5) * 100)),
+      if (publishOnChain) {
+        setMsg(
+          "Feedback saved for marketplace reputation. Waiting for wallet signature to publish on-chain...",
         );
-        const repTxn = await apiRequest<{ unsignedTxn: string }>(
-          "/api/reputation/feedback",
-          {
+        try {
+          const score = Math.max(
+            0,
+            Math.min(100, Math.round((parsedRating / 5) * 100)),
+          );
+          const repTxn = await apiRequest<{ unsignedTxn: string }>(
+            "/api/reputation/feedback",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                senderAddress: buyerAddress,
+                agentAddress: order.seller,
+                score,
+              }),
+            },
+          );
+
+          const bytes = Uint8Array.from(atob(repTxn.unsignedTxn), (c) =>
+            c.charCodeAt(0),
+          );
+          const signed = (await signTransactions([bytes]))[0];
+          if (!signed) throw new Error("Wallet returned empty signature");
+          const b64 = btoa(String.fromCharCode(...Array.from(signed)));
+          await apiRequest<{ txId: string }>("/api/wallet/submit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              senderAddress: buyerAddress,
-              agentAddress: order.seller,
-              score,
-            }),
-          },
-        );
-
-        const bytes = Uint8Array.from(atob(repTxn.unsignedTxn), (c) =>
-          c.charCodeAt(0),
-        );
-        const signed = (await signTransactions([bytes]))[0];
-        if (!signed) throw new Error("Wallet returned empty signature");
-        const b64 = btoa(String.fromCharCode(...Array.from(signed)));
-        await apiRequest<{ txId: string }>("/api/wallet/submit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ signedTxn: b64 }),
-        });
-        setMsg("Feedback saved + published to on-chain seller reputation.");
+            body: JSON.stringify({ signedTxn: b64 }),
+          });
+          setMsg("Feedback saved + published to on-chain seller reputation.");
+        } catch (publishError) {
+          if (isWalletCancelError(publishError)) {
+            setError("");
+            setMsg(
+              "Feedback saved for marketplace reputation. On-chain publish was canceled in wallet.",
+            );
+            return;
+          }
+          throw publishError;
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit feedback");
@@ -125,6 +185,21 @@ export function FeedbackPanel({
 
       {order && (
         <div className="cyber-form" style={{ gap: 12 }}>
+          <div className="feedback-guide">
+            <p className="feedback-guide-title">How feedback works</p>
+            <ol>
+              <li>Choose a rating and save feedback to marketplace history.</li>
+              <li>
+                Use Publish On-Chain only once if you want permanent seller
+                reputation update.
+              </li>
+              <li>
+                You can edit marketplace feedback for 15 minutes; undo remains
+                available anytime.
+              </li>
+            </ol>
+          </div>
+
           {feedback && (
             <p className="status-muted">
               Current: {feedback.isUndone ? "Undone" : `${feedback.rating}/5`} •
@@ -134,11 +209,28 @@ export function FeedbackPanel({
 
           <label>
             <span>RATING (1-5)</span>
-            <input
-              value={rating}
-              onChange={(e) => setRating(e.target.value)}
-              inputMode="numeric"
-            />
+            <div
+              className="rating-buttons"
+              role="group"
+              aria-label="Choose rating"
+            >
+              {[1, 2, 3, 4, 5].map((value) => {
+                const active = Number(rating) === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`rating-chip ${active ? "is-active" : ""}`}
+                    onClick={() => setRating(String(value))}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="status-muted">
+              1 = poor access quality, 5 = excellent.
+            </p>
           </label>
           <label>
             <span>COMMENT (OPTIONAL)</span>
@@ -146,10 +238,11 @@ export function FeedbackPanel({
               className="cyber-textarea"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
+              placeholder="Share delivery quality, account reliability, and support experience."
             />
           </label>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="feedback-actions">
             <button
               className="btn-neon"
               type="button"
@@ -161,20 +254,33 @@ export function FeedbackPanel({
             <button
               className="btn-outline"
               type="button"
-              disabled={!buyerAddress || saving}
+              disabled={!canPublishOnChain || saving}
               onClick={() => submit(true)}
             >
-              Submit + Publish On-Chain
+              Publish On-Chain
             </button>
             <button
               className="btn-outline"
               type="button"
-              disabled={!buyerAddress || saving || !feedback}
+              disabled={!buyerAddress || saving || !canUndo}
               onClick={undo}
             >
               Undo Feedback
             </button>
           </div>
+
+          {!buyerAddress && (
+            <p className="status-muted">
+              Connect wallet to publish feedback on-chain.
+            </p>
+          )}
+
+          {feedback?.isUndone && (
+            <p className="status-muted">
+              This feedback is currently undone. Submit again to create a new
+              active marketplace feedback entry.
+            </p>
+          )}
 
           {msg && (
             <p className="status-good">
@@ -187,9 +293,8 @@ export function FeedbackPanel({
             </p>
           )}
           <p className="status-muted">
-            Marketplace feedback is editable for 15 minutes, and undo is allowed
-            anytime. Publishing to the on-chain reputation contract is
-            permanent.
+            On-chain publish is permanent and updates seller reputation score
+            out of 100.
           </p>
         </div>
       )}

@@ -84,6 +84,14 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const msg =
       error instanceof Error ? error.message : "Failed to submit feedback";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const isUserError =
+      msg.includes("rating must") ||
+      msg.includes("locked") ||
+      msg.includes("Order note not found") ||
+      msg.includes("Order does not belong to buyer");
+    return NextResponse.json(
+      { error: msg },
+      { status: isUserError ? 400 : 500 },
+    );
   }
 }

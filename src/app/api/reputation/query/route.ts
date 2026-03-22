@@ -6,12 +6,18 @@ export async function GET(req: NextRequest) {
   try {
     const agentAddress = req.nextUrl.searchParams.get("agent");
     if (!agentAddress) {
-      return NextResponse.json({ error: "agent query param required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "agent query param required" },
+        { status: 400 },
+      );
     }
 
     const appId = process.env.REPUTATION_APP_ID;
     if (!appId) {
-      return NextResponse.json({ error: "REPUTATION_APP_ID not configured" }, { status: 500 });
+      return NextResponse.json(
+        { error: "REPUTATION_APP_ID not configured" },
+        { status: 500 },
+      );
     }
 
     const algorand = getClient();
@@ -23,15 +29,28 @@ export async function GET(req: NextRequest) {
     ]);
 
     try {
-      const boxValue = await algod.getApplicationBoxByName(BigInt(appId), boxName).do();
+      const boxValue = await algod
+        .getApplicationBoxByName(BigInt(appId), boxName)
+        .do();
       const raw = boxValue.value;
 
-      const totalScore = Number(new DataView(raw.buffer, raw.byteOffset, 8).getBigUint64(0));
-      const feedbackCount = Number(new DataView(raw.buffer, raw.byteOffset + 8, 8).getBigUint64(0));
-      const registeredAt = Number(new DataView(raw.buffer, raw.byteOffset + 16, 8).getBigUint64(0));
-      const isActiveRaw = Number(new DataView(raw.buffer, raw.byteOffset + 24, 8).getBigUint64(0));
+      const totalScore = Number(
+        new DataView(raw.buffer, raw.byteOffset, 8).getBigUint64(0),
+      );
+      const feedbackCount = Number(
+        new DataView(raw.buffer, raw.byteOffset + 8, 8).getBigUint64(0),
+      );
+      const registeredAt = Number(
+        new DataView(raw.buffer, raw.byteOffset + 16, 8).getBigUint64(0),
+      );
+      const isActiveRaw = Number(
+        new DataView(raw.buffer, raw.byteOffset + 24, 8).getBigUint64(0),
+      );
 
-      const reputation = feedbackCount > 0 ? Math.round((totalScore * 100) / feedbackCount) : 0;
+      const reputation =
+        feedbackCount > 0
+          ? Math.max(0, Math.min(100, Math.round(totalScore / feedbackCount)))
+          : 0;
 
       return NextResponse.json({
         agent: agentAddress,

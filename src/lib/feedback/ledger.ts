@@ -66,35 +66,63 @@ function normalizeRating(value: unknown): number {
 function computeCurrentForOrder(
   revisions: FeedbackRevision[],
   orderTxId: string,
-): { current: FeedbackRevision | null; firstCreate: FeedbackRevision | null } {
+): {
+  current: FeedbackRevision | null;
+  firstCreate: FeedbackRevision | null;
+  activeCreate: FeedbackRevision | null;
+} {
   let current: FeedbackRevision | null = null;
   let firstCreate: FeedbackRevision | null = null;
+  let activeCreate: FeedbackRevision | null = null;
 
   for (const rev of revisions) {
     if (rev.orderTxId !== orderTxId) continue;
-    if (rev.action === "create" && !firstCreate) firstCreate = rev;
-    if (rev.action === "undo") {
-      current = null;
+    if (rev.action === "create") {
+      if (!firstCreate) firstCreate = rev;
+      activeCreate = rev;
+      current = rev;
       continue;
     }
-    if (rev.action === "create" || rev.action === "edit") {
+
+    if (rev.action === "undo") {
+      current = null;
+      activeCreate = null;
+      continue;
+    }
+
+    if (rev.action === "edit") {
       current = rev;
     }
   }
 
-  return { current, firstCreate };
+  return { current, firstCreate, activeCreate };
+}
+
+function getLastRevisionForOrder(
+  revisions: FeedbackRevision[],
+  orderTxId: string,
+): FeedbackRevision | null {
+  let last: FeedbackRevision | null = null;
+  for (const rev of revisions) {
+    if (rev.orderTxId !== orderTxId) continue;
+    last = rev;
+  }
+  return last;
 }
 
 export async function getFeedbackForOrder(
   orderTxId: string,
 ): Promise<FeedbackSummary | null> {
   const ledger = await readLedger();
-  const { current, firstCreate } = computeCurrentForOrder(
+  const { current, firstCreate, activeCreate } = computeCurrentForOrder(
     ledger.revisions,
     orderTxId,
   );
   if (!firstCreate) return null;
-  const updatedAt = current ? current.createdAt : firstCreate.createdAt;
+  const lastRevision = getLastRevisionForOrder(ledger.revisions, orderTxId);
+  const updatedAt = lastRevision
+    ? lastRevision.createdAt
+    : firstCreate.createdAt;
 
   return {
     orderTxId,
@@ -103,7 +131,7 @@ export async function getFeedbackForOrder(
     seller: firstCreate.seller,
     rating: current ? current.rating : firstCreate.rating,
     comment: current ? current.comment : firstCreate.comment,
-    createdAt: firstCreate.createdAt,
+    createdAt: activeCreate?.createdAt ?? firstCreate.createdAt,
     updatedAt,
     isUndone: current === null,
   };
@@ -122,7 +150,7 @@ export async function submitFeedback(input: {
     ? Number(input.now)
     : Date.now();
   const ledger = await readLedger();
-  const { current, firstCreate } = computeCurrentForOrder(
+  const { current, firstCreate, activeCreate } = computeCurrentForOrder(
     ledger.revisions,
     input.orderTxId,
   );
@@ -130,7 +158,9 @@ export async function submitFeedback(input: {
   const rating = normalizeRating(input.rating);
   if (!rating) throw new Error("rating must be 1-5");
 
-  if (!firstCreate) {
+  // Creating a new active feedback is always allowed when no feedback exists
+  // yet, or after the previous one was undone.
+  if (!firstCreate || !current) {
     const rev: FeedbackRevision = {
       id: uuidv4(),
       orderTxId: input.orderTxId,
@@ -150,7 +180,8 @@ export async function submitFeedback(input: {
     return { summary, wasCreated: true };
   }
 
-  const withinEdit = now - firstCreate.createdAt <= EDIT_WINDOW_MS;
+  const editAnchor = activeCreate?.createdAt ?? firstCreate.createdAt;
+  const withinEdit = now - editAnchor <= EDIT_WINDOW_MS;
   if (!withinEdit) {
     throw new Error(
       "Feedback is locked and can no longer be edited (undo is still allowed)",

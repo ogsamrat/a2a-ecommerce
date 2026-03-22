@@ -36,7 +36,6 @@ export function DashboardShell({
           className="page-head cyber-card"
           style={fixedHeight ? { flexShrink: 0 } : {}}
         >
-          <p className="code-tag">AGENTIC COMMERCE CONSOLE</p>
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </header>

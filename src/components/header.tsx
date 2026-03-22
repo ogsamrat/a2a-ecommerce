@@ -51,7 +51,7 @@ export function Header({ activeTab, onTabChange }: HeaderProps) {
                 color: "var(--text-primary)",
               }}
             >
-              AgentDEX
+              AlgoAgent Market
             </span>
             <span
               className="hidden sm:inline text-[10px] ml-2 px-1.5 py-0.5 rounded font-mono"

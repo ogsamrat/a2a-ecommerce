@@ -22,7 +22,7 @@ const labelFont = Share_Tech_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgentDEX | Autonomous Agent Marketplace",
+  title: "AlgoAgent Market | Autonomous Agent Marketplace",
   description:
     "Autonomous commerce interface where buyer agents discover, compare, negotiate, and settle purchases on Algorand.",
 };

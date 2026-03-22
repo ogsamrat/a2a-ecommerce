@@ -21,6 +21,30 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 8)}...${address.slice(-8)}`;
 }
 
+function formatTypeLabel(type: string): string {
+  const normalized = String(type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-");
+
+  const labels: Record<string, string> = {
+    account: "Account Access",
+    "cloud-storage": "Cloud Storage",
+    "api-access": "API Access",
+    compute: "Compute",
+    hosting: "Hosting",
+    other: "Other",
+  };
+
+  if (labels[normalized]) return labels[normalized];
+
+  return normalized
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function MarketplacePage() {
   const { activeAccount, signTransactions } = useWallet();
   const [listings, setListings] = useState<OnChainListing[]>([]);
@@ -116,13 +140,31 @@ export default function MarketplacePage() {
     );
   }, [listings, query]);
 
-  function formatScore(
+  function formatReputation100(
     score: number | undefined,
     count: number | undefined,
   ): string {
-    if (!count) return "New";
+    if (!count) return "Unrated";
     if (score === undefined) return "N/A";
-    return `${score.toFixed(2)}/5 (${count})`;
+    const normalized = score <= 5 ? score * 20 : score;
+    const reputation = Math.max(0, Math.min(100, normalized));
+    return `${reputation.toFixed(0)}/100`;
+  }
+
+  function reputationTone(
+    score: number | undefined,
+    count: number | undefined,
+  ): "new" | "low" | "mid" | "high" {
+    if (!count || score === undefined) return "new";
+    const normalized = score <= 5 ? score * 20 : score;
+    if (normalized >= 80) return "high";
+    if (normalized >= 60) return "mid";
+    return "low";
+  }
+
+  function reputationDetails(count: number | undefined): string {
+    if (!count) return "No feedback yet";
+    return `Based on ${count} buyer feedback ${count === 1 ? "entry" : "entries"}`;
   }
 
   const canBuy = Boolean(activeAccount?.address && selectedItem && !purchasing);
@@ -242,6 +284,7 @@ export default function MarketplacePage() {
         )}
         {resetStatus && <p className="status-muted">{resetStatus}</p>}
         {warning && <p className="status-muted">{warning}</p>}
+        {loading && <p className="status-muted">Loading...</p>}
 
         <div className="product-grid">
           {filtered.map((item) => (
@@ -253,9 +296,14 @@ export default function MarketplacePage() {
             >
               <div className="product-top">
                 <span>{item.type}</span>
-                <span>
-                  Seller{" "}
-                  {formatScore(
+                <span
+                  className={`rep-pill rep-${reputationTone(
+                    sellerRatings[item.seller]?.score,
+                    sellerRatings[item.seller]?.count,
+                  )}`}
+                >
+                  Seller Reputation{" "}
+                  {formatReputation100(
                     sellerRatings[item.seller]?.score,
                     sellerRatings[item.seller]?.count,
                   )}
@@ -295,31 +343,51 @@ export default function MarketplacePage() {
               &times;
             </button>
             <h3>{selectedItem.service}</h3>
-            <div
-              className="product-top"
-              style={{
-                justifyContent: "flex-start",
-                gap: "1rem",
-                marginTop: 0,
-                marginBottom: "0.5rem",
-              }}
+            <p
+              className="code-tag"
+              style={{ marginTop: 0, marginBottom: "0.4rem" }}
             >
-              <span>{selectedItem.type}</span>
-              <span>
-                Seller{" "}
-                {formatScore(
+              Type: {formatTypeLabel(selectedItem.type)}
+            </p>
+            <div className="modal-reputation-row">
+              <span
+                className={`rep-pill rep-${reputationTone(
+                  sellerRatings[selectedItem.seller]?.score,
+                  sellerRatings[selectedItem.seller]?.count,
+                )}`}
+              >
+                Seller Reputation{" "}
+                {formatReputation100(
                   sellerRatings[selectedItem.seller]?.score,
                   sellerRatings[selectedItem.seller]?.count,
                 )}
               </span>
-              <span>
-                Product{" "}
-                {formatScore(
+              <span
+                className={`rep-pill rep-${reputationTone(
+                  listingRatings[selectedItem.txId]?.score,
+                  listingRatings[selectedItem.txId]?.count,
+                )}`}
+              >
+                Product Reputation{" "}
+                {formatReputation100(
                   listingRatings[selectedItem.txId]?.score,
                   listingRatings[selectedItem.txId]?.count,
                 )}
               </span>
             </div>
+            <p
+              className="status-muted"
+              style={{ marginTop: 0, marginBottom: "0.5rem" }}
+            >
+              Seller reputation is calculated from buyer feedback history and
+              shown on a 0-100 scale.
+            </p>
+            <p
+              className="status-muted"
+              style={{ marginTop: 0, marginBottom: "0.5rem" }}
+            >
+              {reputationDetails(sellerRatings[selectedItem.seller]?.count)}
+            </p>
             <p className="code-tag" style={{ wordBreak: "break-all" }}>
               Seller: {selectedItem.seller}
             </p>
@@ -347,26 +415,16 @@ export default function MarketplacePage() {
                 ? ` • ${selectedItem.accessDurationDays} days`
                 : ""}
             </p>
-            <div style={{ marginTop: "0.5rem" }}>
+            <div className="modal-actions-row">
               <a
                 className="btn-outline"
                 target="_blank"
                 rel="noreferrer"
                 href={`https://testnet.explorer.perawallet.app/tx/${selectedItem.txId}`}
-                style={{ display: "inline-block" }}
+                style={{ display: "inline-flex", justifyContent: "center" }}
               >
                 View on Explorer
               </a>
-            </div>
-
-            <div
-              style={{
-                marginTop: "0.75rem",
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
               <button
                 className="btn-neon"
                 type="button"
@@ -375,10 +433,10 @@ export default function MarketplacePage() {
               >
                 {purchasing ? "Buying..." : "Buy"}
               </button>
-              {!activeAccount?.address && (
-                <p className="status-muted">Connect wallet to purchase.</p>
-              )}
             </div>
+            {!activeAccount?.address && (
+              <p className="status-muted">Connect wallet to purchase.</p>
+            )}
 
             {purchaseMsg && (
               <p className="status-good" style={{ marginTop: "0.75rem" }}>

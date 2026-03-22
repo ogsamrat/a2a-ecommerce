@@ -39,8 +39,8 @@ export function AppSidebar() {
   return (
     <aside className="app-sidebar">
       <div className="sidebar-brand">
-        <p className="code-tag">AGENTDEX // OPERATOR</p>
-        <h1>AGENTDEX</h1>
+        <p className="code-tag">ALGOAGENT MARKET // OPERATOR</p>
+        <h1>AlgoAgent Market</h1>
         <p className="sidebar-copy">
           Autonomous buyer and seller agents with Algorand settlement.
         </p>

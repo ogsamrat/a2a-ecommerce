@@ -180,7 +180,7 @@ export async function executePayment(
     amount: algo(amountAlgo),
     note: note
       ? String(note).slice(0, 900)
-      : `AgentDEX Payment | ${amountAlgo} ALGO`,
+      : `AlgoAgent Market Payment | ${amountAlgo} ALGO`,
   });
 
   const txId = result.txIds[0];
