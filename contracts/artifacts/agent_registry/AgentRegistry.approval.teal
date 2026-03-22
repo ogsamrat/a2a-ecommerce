@@ -1,0 +1,819 @@
+#pragma version 11
+#pragma typetrack false
+
+// @algorandfoundation/algorand-typescript/arc4/index.d.ts::Contract.approvalProgram() -> uint64:
+main:
+    intcblock 0 1 8 32
+    bytecblock "a" "admin" "paused" 0x151f7c75 "agentCount" "totalFeedbacks"
+    txn ApplicationID
+    bnz main_after_if_else@2
+    // contracts/AgentRegistry.algo.ts:48
+    // agentCount     = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 4 // "agentCount"
+    intc_0 // 0
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:49
+    // totalFeedbacks = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 5 // "totalFeedbacks"
+    intc_0 // 0
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:50
+    // paused         = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec_2 // "paused"
+    intc_0 // 0
+    app_global_put
+
+main_after_if_else@2:
+    // contracts/AgentRegistry.algo.ts:46
+    // export class AgentRegistry extends Contract {
+    pushbytes 0x2487c32c // method "deleteApplication()void"
+    txna ApplicationArgs 0
+    match main_deleteApplication_route@4
+
+main_switch_case_next@5:
+    // contracts/AgentRegistry.algo.ts:46
+    // export class AgentRegistry extends Contract {
+    txn OnCompletion
+    !
+    assert // OnCompletion must be NoOp
+    txn ApplicationID
+    bz main_create_NoOp@20
+    pushbytess 0x3600504a 0x91b13cc0 0x3e6edd98 0x21f34c9b 0x8d698517 0xea09d24b 0xd5de4e57 0x575e5428 0xb73d0fad 0x0178f94b 0x1b529de8 0x7ee1b9cc // method "registerWithListing(byte[],uint64,uint64)void", method "updateListing(byte[],uint64,uint64)void", method "deactivateAgent(address)void", method "submitFeedback(address,uint64)void", method "getReputation(address)uint64", method "getAgentProfile(address)(uint64,uint64,uint64,uint64,uint64,uint64,uint64)", method "isRegistered(address)uint64", method "getAgentCount()uint64", method "getTotalFeedbacks()uint64", method "pause()void", method "unpause()void", method "transferAdmin(address)void"
+    txna ApplicationArgs 0
+    match registerWithListing updateListing deactivateAgent submitFeedback getReputation getAgentProfile isRegistered getAgentCount getTotalFeedbacks pause unpause transferAdmin
+    err
+
+main_create_NoOp@20:
+    // contracts/AgentRegistry.algo.ts:46
+    // export class AgentRegistry extends Contract {
+    pushbytes 0xb8447b36 // method "createApplication()void"
+    txna ApplicationArgs 0
+    match createApplication
+    err
+
+main_deleteApplication_route@4:
+    // contracts/AgentRegistry.algo.ts:199
+    // @abimethod({ allowActions: "DeleteApplication" })
+    txn OnCompletion
+    pushint 5 // DeleteApplication
+    ==
+    txn ApplicationID
+    &&
+    assert // OnCompletion must be DeleteApplication && can only call when not creating
+    b deleteApplication
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.createApplication[routing]() -> void:
+createApplication:
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:61
+    // this.admin.value = Txn.sender;
+    txn Sender
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:59
+    // @abimethod({ allowActions: "NoOp", onCreate: "require" })
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.registerWithListing[routing]() -> void:
+registerWithListing:
+    // contracts/AgentRegistry.algo.ts:72-76
+    // public registerWithListing(
+    //   listingData: bytes,
+    //   price: uint64,
+    //   typeCode: uint64,
+    // ): void {
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2 // 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    extract 2 0
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // contracts/AgentRegistry.algo.ts:77
+    // assert(this.paused.value === Uint64(0), "Contract is paused");
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:50
+    // paused         = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec_2 // "paused"
+    // contracts/AgentRegistry.algo.ts:77
+    // assert(this.paused.value === Uint64(0), "Contract is paused");
+    app_global_get_ex
+    assert // check GlobalState exists
+    !
+    assert // Contract is paused
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    // contracts/AgentRegistry.algo.ts:78
+    // assert(!this.agents(Txn.sender).exists, "Agent already registered");
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    concat
+    // contracts/AgentRegistry.algo.ts:78
+    // assert(!this.agents(Txn.sender).exists, "Agent already registered");
+    box_len
+    bury 1
+    !
+    assert // Agent already registered
+    // contracts/AgentRegistry.algo.ts:79
+    // assert(typeCode <= Uint64(4), "Invalid listing type code");
+    dup
+    pushint 4 // 4
+    <=
+    assert // Invalid listing type code
+    // contracts/AgentRegistry.algo.ts:81
+    // const slot = this.agentCount.value;
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:48
+    // agentCount     = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 4 // "agentCount"
+    // contracts/AgentRegistry.algo.ts:81
+    // const slot = this.agentCount.value;
+    app_global_get_ex
+    assert // check GlobalState exists
+    // contracts/AgentRegistry.algo.ts:82-90
+    // const profile: AgentProfile = {
+    //   totalScore:      Uint64(0),
+    //   feedbackCount:   Uint64(0),
+    //   registeredAt:    slot,
+    //   isActive:        Uint64(1),
+    //   price,
+    //   listingTypeCode: typeCode,
+    //   agentSlot:       slot,
+    // };
+    dup
+    itob
+    pushbytes 0x00000000000000000000000000000000
+    dig 1
+    concat
+    // contracts/AgentRegistry.algo.ts:86
+    // isActive:        Uint64(1),
+    intc_1 // 1
+    // contracts/AgentRegistry.algo.ts:82-90
+    // const profile: AgentProfile = {
+    //   totalScore:      Uint64(0),
+    //   feedbackCount:   Uint64(0),
+    //   registeredAt:    slot,
+    //   isActive:        Uint64(1),
+    //   price,
+    //   listingTypeCode: typeCode,
+    //   agentSlot:       slot,
+    // };
+    itob
+    concat
+    uncover 4
+    itob
+    concat
+    uncover 3
+    itob
+    concat
+    swap
+    concat
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    // contracts/AgentRegistry.algo.ts:91
+    // this.agents(Txn.sender).value   = clone(profile);
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    concat
+    // contracts/AgentRegistry.algo.ts:91
+    // this.agents(Txn.sender).value   = clone(profile);
+    swap
+    box_put
+    // contracts/AgentRegistry.algo.ts:55
+    // listings = BoxMap<Account, bytes>({ keyPrefix: "l" });
+    pushbytes "l"
+    // contracts/AgentRegistry.algo.ts:92
+    // this.listings(Txn.sender).value = listingData;
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:55
+    // listings = BoxMap<Account, bytes>({ keyPrefix: "l" });
+    concat
+    // contracts/AgentRegistry.algo.ts:92
+    // this.listings(Txn.sender).value = listingData;
+    dup
+    box_del
+    pop
+    uncover 2
+    box_put
+    // contracts/AgentRegistry.algo.ts:93
+    // this.agentCount.value = slot + Uint64(1);
+    intc_1 // 1
+    +
+    // contracts/AgentRegistry.algo.ts:48
+    // agentCount     = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 4 // "agentCount"
+    // contracts/AgentRegistry.algo.ts:93
+    // this.agentCount.value = slot + Uint64(1);
+    swap
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:72-76
+    // public registerWithListing(
+    //   listingData: bytes,
+    //   price: uint64,
+    //   typeCode: uint64,
+    // ): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.updateListing[routing]() -> void:
+updateListing:
+    // contracts/AgentRegistry.algo.ts:99-103
+    // public updateListing(
+    //   listingData: bytes,
+    //   price: uint64,
+    //   typeCode: uint64,
+    // ): void {
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2 // 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    extract 2 0
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    dup
+    btoi
+    // contracts/AgentRegistry.algo.ts:104
+    // assert(this.paused.value === Uint64(0), "Contract is paused");
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:50
+    // paused         = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec_2 // "paused"
+    // contracts/AgentRegistry.algo.ts:104
+    // assert(this.paused.value === Uint64(0), "Contract is paused");
+    app_global_get_ex
+    assert // check GlobalState exists
+    !
+    assert // Contract is paused
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    // contracts/AgentRegistry.algo.ts:105
+    // assert(this.agents(Txn.sender).exists, "Agent not registered");
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    concat
+    // contracts/AgentRegistry.algo.ts:105
+    // assert(this.agents(Txn.sender).exists, "Agent not registered");
+    box_len
+    bury 1
+    assert // Agent not registered
+    // contracts/AgentRegistry.algo.ts:106
+    // assert(typeCode <= Uint64(4), "Invalid listing type code");
+    pushint 4 // 4
+    <=
+    assert // Invalid listing type code
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    // contracts/AgentRegistry.algo.ts:108
+    // const profile = clone(this.agents(Txn.sender).value);
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    concat
+    // contracts/AgentRegistry.algo.ts:108
+    // const profile = clone(this.agents(Txn.sender).value);
+    box_get
+    assert // Box must have value
+    // contracts/AgentRegistry.algo.ts:109
+    // assert(profile.isActive === Uint64(1), "Agent is inactive");
+    dup
+    pushint 24 // 24
+    extract_uint64
+    intc_1 // 1
+    ==
+    assert // Agent is inactive
+    // contracts/AgentRegistry.algo.ts:112
+    // updated.price           = price;
+    uncover 2
+    replace2 32
+    // contracts/AgentRegistry.algo.ts:113
+    // updated.listingTypeCode = typeCode;
+    swap
+    replace2 40
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    // contracts/AgentRegistry.algo.ts:114
+    // this.agents(Txn.sender).value   = clone(updated);
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    concat
+    // contracts/AgentRegistry.algo.ts:114
+    // this.agents(Txn.sender).value   = clone(updated);
+    swap
+    box_put
+    // contracts/AgentRegistry.algo.ts:55
+    // listings = BoxMap<Account, bytes>({ keyPrefix: "l" });
+    pushbytes "l"
+    // contracts/AgentRegistry.algo.ts:115
+    // this.listings(Txn.sender).value = listingData;
+    txn Sender
+    // contracts/AgentRegistry.algo.ts:55
+    // listings = BoxMap<Account, bytes>({ keyPrefix: "l" });
+    concat
+    // contracts/AgentRegistry.algo.ts:115
+    // this.listings(Txn.sender).value = listingData;
+    dup
+    box_del
+    pop
+    swap
+    box_put
+    // contracts/AgentRegistry.algo.ts:99-103
+    // public updateListing(
+    //   listingData: bytes,
+    //   price: uint64,
+    //   typeCode: uint64,
+    // ): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.deactivateAgent[routing]() -> void:
+deactivateAgent:
+    // contracts/AgentRegistry.algo.ts:119
+    // public deactivateAgent(agent: Account): void {
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // contracts/AgentRegistry.algo.ts:120
+    // assertMatch(Txn, { sender: this.admin.value });
+    txn Sender
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:120
+    // assertMatch(Txn, { sender: this.admin.value });
+    app_global_get_ex
+    assert // check GlobalState exists
+    ==
+    assert // assert target is match for conditions
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    swap
+    concat
+    // contracts/AgentRegistry.algo.ts:121
+    // assert(this.agents(agent).exists, "Agent not registered");
+    dup
+    box_len
+    bury 1
+    assert // Agent not registered
+    // contracts/AgentRegistry.algo.ts:125
+    // updated.isActive = Uint64(0);
+    intc_0 // 0
+    itob
+    // contracts/AgentRegistry.algo.ts:125-126
+    // updated.isActive = Uint64(0);
+    // this.agents(agent).value = clone(updated);
+    pushint 24 // 24
+    swap
+    box_replace
+    // contracts/AgentRegistry.algo.ts:119
+    // public deactivateAgent(agent: Account): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.submitFeedback[routing]() -> void:
+submitFeedback:
+    // contracts/AgentRegistry.algo.ts:135
+    // public submitFeedback(agent: Account, score: uint64): void {
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // contracts/AgentRegistry.algo.ts:136
+    // assert(this.paused.value === Uint64(0), "Contract is paused");
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:50
+    // paused         = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec_2 // "paused"
+    // contracts/AgentRegistry.algo.ts:136
+    // assert(this.paused.value === Uint64(0), "Contract is paused");
+    app_global_get_ex
+    assert // check GlobalState exists
+    !
+    assert // Contract is paused
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    dig 2
+    concat
+    // contracts/AgentRegistry.algo.ts:137
+    // assert(this.agents(agent).exists, "Agent not registered");
+    dup
+    box_len
+    bury 1
+    assert // Agent not registered
+    // contracts/AgentRegistry.algo.ts:138
+    // assert(score <= MAX_SCORE, "Score must be 0-100");
+    dig 1
+    pushint 100 // 100
+    <=
+    assert // Score must be 0-100
+    // contracts/AgentRegistry.algo.ts:139
+    // assert(Txn.sender !== agent, "Cannot review yourself");
+    txn Sender
+    uncover 3
+    !=
+    assert // Cannot review yourself
+    // contracts/AgentRegistry.algo.ts:141
+    // const profile = clone(this.agents(agent).value);
+    dup
+    box_get
+    pop
+    // contracts/AgentRegistry.algo.ts:142
+    // assert(profile.isActive === Uint64(1), "Agent is inactive");
+    dup
+    pushint 24 // 24
+    extract_uint64
+    intc_1 // 1
+    ==
+    assert // Agent is inactive
+    // contracts/AgentRegistry.algo.ts:145
+    // updated.totalScore    = updated.totalScore    + score;
+    dup
+    intc_0 // 0
+    extract_uint64
+    uncover 3
+    +
+    itob
+    replace2 0
+    // contracts/AgentRegistry.algo.ts:146
+    // updated.feedbackCount = updated.feedbackCount + Uint64(1);
+    dup
+    intc_2 // 8
+    extract_uint64
+    intc_1 // 1
+    +
+    itob
+    replace2 8
+    // contracts/AgentRegistry.algo.ts:147
+    // this.agents(agent).value = clone(updated);
+    box_put
+    // contracts/AgentRegistry.algo.ts:148
+    // this.totalFeedbacks.value = this.totalFeedbacks.value + Uint64(1);
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:49
+    // totalFeedbacks = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 5 // "totalFeedbacks"
+    // contracts/AgentRegistry.algo.ts:148
+    // this.totalFeedbacks.value = this.totalFeedbacks.value + Uint64(1);
+    app_global_get_ex
+    assert // check GlobalState exists
+    intc_1 // 1
+    +
+    // contracts/AgentRegistry.algo.ts:49
+    // totalFeedbacks = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 5 // "totalFeedbacks"
+    // contracts/AgentRegistry.algo.ts:148
+    // this.totalFeedbacks.value = this.totalFeedbacks.value + Uint64(1);
+    swap
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:135
+    // public submitFeedback(agent: Account, score: uint64): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.getReputation[routing]() -> void:
+getReputation:
+    // contracts/AgentRegistry.algo.ts:153
+    // @abimethod({ readonly: true })
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    swap
+    concat
+    // contracts/AgentRegistry.algo.ts:155
+    // assert(this.agents(agent).exists, "Agent not registered");
+    dup
+    box_len
+    bury 1
+    assert // Agent not registered
+    // contracts/AgentRegistry.algo.ts:156
+    // const profile = clone(this.agents(agent).value);
+    box_get
+    pop
+    dup
+    // contracts/AgentRegistry.algo.ts:157
+    // if (profile.feedbackCount === Uint64(0)) return Uint64(0);
+    intc_2 // 8
+    extract_uint64
+    dup
+    bnz getReputation_after_if_else@3
+    intc_0 // 0
+
+getReputation_after_inlined_contracts/AgentRegistry.algo.ts::AgentRegistry.getReputation@4:
+    // contracts/AgentRegistry.algo.ts:153
+    // @abimethod({ readonly: true })
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+getReputation_after_if_else@3:
+    // contracts/AgentRegistry.algo.ts:158
+    // return (profile.totalScore * SCALE) / profile.feedbackCount;
+    dig 1
+    intc_0 // 0
+    extract_uint64
+    pushint 100 // 100
+    *
+    dig 1
+    /
+    // contracts/AgentRegistry.algo.ts:153
+    // @abimethod({ readonly: true })
+    b getReputation_after_inlined_contracts/AgentRegistry.algo.ts::AgentRegistry.getReputation@4
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.getAgentProfile[routing]() -> void:
+getAgentProfile:
+    // contracts/AgentRegistry.algo.ts:161
+    // @abimethod({ readonly: true })
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    swap
+    concat
+    // contracts/AgentRegistry.algo.ts:163
+    // assert(this.agents(agent).exists, "Agent not registered");
+    dup
+    box_len
+    bury 1
+    assert // Agent not registered
+    // contracts/AgentRegistry.algo.ts:164
+    // return clone(this.agents(agent).value);
+    box_get
+    pop
+    // contracts/AgentRegistry.algo.ts:161
+    // @abimethod({ readonly: true })
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.isRegistered[routing]() -> void:
+isRegistered:
+    // contracts/AgentRegistry.algo.ts:167
+    // @abimethod({ readonly: true })
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // contracts/AgentRegistry.algo.ts:53
+    // agents   = BoxMap<Account, AgentProfile>({ keyPrefix: "a" });
+    bytec_0 // "a"
+    swap
+    concat
+    // contracts/AgentRegistry.algo.ts:169
+    // return this.agents(agent).exists ? Uint64(1) : Uint64(0);
+    box_len
+    bury 1
+    // contracts/AgentRegistry.algo.ts:167
+    // @abimethod({ readonly: true })
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.getAgentCount[routing]() -> void:
+getAgentCount:
+    // contracts/AgentRegistry.algo.ts:174
+    // return this.agentCount.value;
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:48
+    // agentCount     = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 4 // "agentCount"
+    // contracts/AgentRegistry.algo.ts:174
+    // return this.agentCount.value;
+    app_global_get_ex
+    assert // check GlobalState exists
+    // contracts/AgentRegistry.algo.ts:172
+    // @abimethod({ readonly: true })
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.getTotalFeedbacks[routing]() -> void:
+getTotalFeedbacks:
+    // contracts/AgentRegistry.algo.ts:179
+    // return this.totalFeedbacks.value;
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:49
+    // totalFeedbacks = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec 5 // "totalFeedbacks"
+    // contracts/AgentRegistry.algo.ts:179
+    // return this.totalFeedbacks.value;
+    app_global_get_ex
+    assert // check GlobalState exists
+    // contracts/AgentRegistry.algo.ts:177
+    // @abimethod({ readonly: true })
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.pause[routing]() -> void:
+pause:
+    // contracts/AgentRegistry.algo.ts:185
+    // assertMatch(Txn, { sender: this.admin.value });
+    txn Sender
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:185
+    // assertMatch(Txn, { sender: this.admin.value });
+    app_global_get_ex
+    assert // check GlobalState exists
+    ==
+    assert // assert target is match for conditions
+    // contracts/AgentRegistry.algo.ts:50
+    // paused         = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec_2 // "paused"
+    // contracts/AgentRegistry.algo.ts:186
+    // this.paused.value = Uint64(1);
+    intc_1 // 1
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:184
+    // public pause(): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.unpause[routing]() -> void:
+unpause:
+    // contracts/AgentRegistry.algo.ts:190
+    // assertMatch(Txn, { sender: this.admin.value });
+    txn Sender
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:190
+    // assertMatch(Txn, { sender: this.admin.value });
+    app_global_get_ex
+    assert // check GlobalState exists
+    ==
+    assert // assert target is match for conditions
+    // contracts/AgentRegistry.algo.ts:50
+    // paused         = GlobalState<uint64>({ initialValue: Uint64(0) });
+    bytec_2 // "paused"
+    // contracts/AgentRegistry.algo.ts:191
+    // this.paused.value = Uint64(0);
+    intc_0 // 0
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:189
+    // public unpause(): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.transferAdmin[routing]() -> void:
+transferAdmin:
+    // contracts/AgentRegistry.algo.ts:194
+    // public transferAdmin(newAdmin: Account): void {
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // contracts/AgentRegistry.algo.ts:195
+    // assertMatch(Txn, { sender: this.admin.value });
+    txn Sender
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:195
+    // assertMatch(Txn, { sender: this.admin.value });
+    app_global_get_ex
+    assert // check GlobalState exists
+    ==
+    assert // assert target is match for conditions
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:196
+    // this.admin.value = newAdmin;
+    swap
+    app_global_put
+    // contracts/AgentRegistry.algo.ts:194
+    // public transferAdmin(newAdmin: Account): void {
+    intc_1 // 1
+    return
+
+
+// contracts/AgentRegistry.algo.ts::AgentRegistry.deleteApplication[routing]() -> void:
+deleteApplication:
+    // contracts/AgentRegistry.algo.ts:201
+    // assertMatch(Txn, { sender: this.admin.value });
+    txn Sender
+    intc_0 // 0
+    // contracts/AgentRegistry.algo.ts:47
+    // admin          = GlobalState<Account>();
+    bytec_1 // "admin"
+    // contracts/AgentRegistry.algo.ts:201
+    // assertMatch(Txn, { sender: this.admin.value });
+    app_global_get_ex
+    assert // check GlobalState exists
+    ==
+    assert // assert target is match for conditions
+    // contracts/AgentRegistry.algo.ts:199
+    // @abimethod({ allowActions: "DeleteApplication" })
+    intc_1 // 1
+    return

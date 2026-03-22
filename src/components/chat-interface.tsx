@@ -144,31 +144,36 @@ export function ChatInterface({ actions }: ChatInterfaceProps) {
   if (actions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4 max-w-md">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/10 flex items-center justify-center">
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              A2A
-            </span>
+        <div className="text-center space-y-5 max-w-lg px-6">
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold text-zinc-100 tracking-tight">
+              What do you want to buy?
+            </h2>
+            <p className="text-sm text-zinc-500 leading-relaxed max-w-md mx-auto">
+              Your buyer agent will search on-chain listings via the Algorand Indexer,
+              verify sellers with ZK commitments, negotiate the best price, and execute
+              payment — all autonomously.
+            </p>
           </div>
-          <h2 className="text-xl font-semibold text-zinc-200">
-            Agent-to-Agent Commerce
-          </h2>
-          <p className="text-sm text-zinc-500 leading-relaxed">
-            Tell your buyer agent what you need. It will search the marketplace,
-            negotiate with sellers, and execute payment on Algorand — all
-            autonomously.
-          </p>
-          <div className="flex flex-wrap justify-center gap-2 pt-2">
-            {["SME Procurement", "Cloud Services", "API Access", "Auto-Buy"].map(
-              (tag) => (
-                <span
-                  key={tag}
-                  className="px-2.5 py-1 rounded-full bg-zinc-800/50 text-[11px] text-zinc-500 border border-zinc-800"
-                >
-                  {tag}
-                </span>
-              )
-            )}
+          <div className="flex flex-col items-center gap-3 pt-3">
+            <div className="flex items-center gap-4 text-[10px] text-zinc-600">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-violet-500" />
+                On-Chain ZK
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-amber-500" />
+                x402 Protocol
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                Real Payments
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-blue-500" />
+                AI Negotiation
+              </span>
+            </div>
           </div>
         </div>
       </div>

@@ -9,10 +9,10 @@ interface IntentInputProps {
 }
 
 const SUGGESTIONS = [
-  "Buy cloud storage under 100 ALGO",
-  "Find cheapest API gateway service",
-  "Get compute instances under 120 ALGO",
-  "Buy managed hosting for my startup",
+  "Buy cloud storage under 1 ALGO",
+  "Find cheapest API gateway",
+  "Get GPU compute for ML training",
+  "Buy managed hosting under 1 ALGO",
 ];
 
 export function IntentInput({ onSubmit, isLoading, phase }: IntentInputProps) {
@@ -42,7 +42,7 @@ export function IntentInput({ onSubmit, isLoading, phase }: IntentInputProps) {
     isLoading || !["idle", "completed", "error"].includes(phase);
 
   return (
-    <div className="border-t border-zinc-800 bg-[#0d0d14]/90 backdrop-blur-md">
+    <div className="border-t border-zinc-800/60 glass">
       {phase === "idle" && (
         <div className="px-4 pt-3 flex gap-2 overflow-x-auto scrollbar-thin">
           {SUGGESTIONS.map((s) => (

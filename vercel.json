@@ -1,0 +1,15 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "env": {
+    "ALGORAND_NETWORK": "testnet",
+    "REPUTATION_APP_ID": "757478982",
+    "REPUTATION_APP_ADDR": "65G5FT76JJ5LKC2WLXCNOEU7GDGYIMCXPHNBQW44TMXXBJPGXMUSZLGWLU",
+    "ZK_APP_ID": "757481776",
+    "ZK_APP_ADDR": "YNZWOKR5Y7TDTNVTVKSRUQW46JUUNGCGFAE5S2QRQGORSZHFUMBAZK43TM",
+    "FACILITATOR_URL": "https://facilitator.goplausible.xyz",
+    "PAY_TO": "VNZM4BXC7CJ3AH3FVQRDLBH6CQFNDDQFIYDI6WOETTF32OWL2SNHY2EYMA"
+  }
+}
