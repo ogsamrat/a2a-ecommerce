@@ -5,17 +5,18 @@ import { CheckCircle2, Eye, EyeOff } from "lucide-react";
 import type { DeliveryRecord, OrderRecord } from "@/lib/agents/types";
 
 function mask(value: string): string {
-  if (!value) return "";
-  if (value.length <= 6) return "••••••";
-  return `${"•".repeat(Math.min(10, value.length - 4))}${value.slice(-4)}`;
+  if (!value) return "••••••••";
+  return "••••••••••";
 }
 
 export function AccessDeliveryPanel({
   order,
   delivery,
+  loading,
 }: {
   order: OrderRecord | null;
   delivery: DeliveryRecord | null;
+  loading?: boolean;
 }) {
   const [reveal, setReveal] = useState<Record<string, boolean>>({});
 
@@ -38,16 +39,24 @@ export function AccessDeliveryPanel({
         <h3>Access Delivery</h3>
       </div>
 
-      {!order && <p className="status-muted">No order loaded yet.</p>}
+      {loading && (
+        <p className="status-muted">
+          <span className="loading-dots">Loading</span>
+        </p>
+      )}
 
-      {order && !delivery && (
+      {!loading && !order && (
+        <p className="status-muted">No order loaded yet.</p>
+      )}
+
+      {!loading && order && !delivery && (
         <p className="status-muted">
           Delivery not submitted yet. Once the seller posts an on-chain delivery
           proof and uploads access details, you can reveal them here.
         </p>
       )}
 
-      {delivery && (
+      {!loading && delivery && (
         <div className="list-stack">
           {delivery.instructions && (
             <div className="list-item" style={{ alignItems: "flex-start" }}>

@@ -22,12 +22,14 @@ export function FeedbackPanel({
   feedback,
   signTransactions,
   onFeedback,
+  loading,
 }: {
   buyerAddress: string | null;
   order: OrderRecord | null;
   feedback: FeedbackSummary | null;
   signTransactions: (txns: Uint8Array[]) => Promise<(Uint8Array | null)[]>;
   onFeedback: (next: FeedbackSummary | null) => void;
+  loading?: boolean;
 }) {
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
@@ -179,11 +181,17 @@ export function FeedbackPanel({
         <h3>Feedback</h3>
       </div>
 
-      {!order && (
+      {loading && (
+        <p className="status-muted">
+          <span className="loading-dots">Loading</span>
+        </p>
+      )}
+
+      {!loading && !order && (
         <p className="status-muted">Load an order to leave feedback.</p>
       )}
 
-      {order && (
+      {!loading && order && (
         <div className="cyber-form" style={{ gap: 12 }}>
           <div className="feedback-guide">
             <p className="feedback-guide-title">How feedback works</p>

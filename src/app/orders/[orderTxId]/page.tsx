@@ -79,6 +79,8 @@ export default function OrderDetailPage() {
     void load();
   }, [load]);
 
+  const orderLoading = loading && Boolean(account?.address);
+
   return (
     <DashboardShell
       title="Order"
@@ -146,7 +148,11 @@ export default function OrderDetailPage() {
           )}
         </article>
 
-        <AccessDeliveryPanel order={order} delivery={delivery} />
+        <AccessDeliveryPanel
+          order={order}
+          delivery={delivery}
+          loading={orderLoading}
+        />
       </section>
 
       <FeedbackPanel
@@ -155,6 +161,7 @@ export default function OrderDetailPage() {
         feedback={feedback}
         signTransactions={signTransactions}
         onFeedback={setFeedback}
+        loading={orderLoading}
       />
     </DashboardShell>
   );

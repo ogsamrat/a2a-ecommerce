@@ -1165,6 +1165,26 @@ p {
   color: var(--accent);
 }
 
+.loading-dots::after {
+  content: "...";
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: left;
+  vertical-align: bottom;
+  animation: loadingDots 1.2s steps(4, end) infinite;
+}
+
+@keyframes loadingDots {
+  from {
+    width: 0;
+  }
+  to {
+    width: 1.2em;
+  }
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

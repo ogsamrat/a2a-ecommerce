@@ -410,7 +410,11 @@ export default function SellPage() {
                 </span>
               </div>
             ))}
-            {loadingListings && <p className="status-muted">Loading...</p>}
+            {loadingListings && (
+              <p className="status-muted">
+                <span className="loading-dots">Loading</span>
+              </p>
+            )}
             {!loadingListings && !myListings.length && (
               <p className="status-muted">No listings loaded yet.</p>
             )}
@@ -479,7 +483,12 @@ export default function SellPage() {
                 </Link>
               </div>
             ))}
-            {!myOrders.length && (
+            {loadingOrders && (
+              <p className="status-muted">
+                <span className="loading-dots">Loading</span>
+              </p>
+            )}
+            {!loadingOrders && !myOrders.length && (
               <p className="status-muted">No incoming orders found yet.</p>
             )}
           </div>

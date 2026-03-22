@@ -284,7 +284,11 @@ export default function MarketplacePage() {
         )}
         {resetStatus && <p className="status-muted">{resetStatus}</p>}
         {warning && <p className="status-muted">{warning}</p>}
-        {loading && <p className="status-muted">Loading...</p>}
+        {loading && (
+          <p className="status-muted">
+            <span className="loading-dots">Loading</span>
+          </p>
+        )}
 
         <div className="product-grid">
           {filtered.map((item) => (
