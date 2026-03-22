@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useWallet } from "@txnlab/use-wallet-react";
-import { AlertTriangle, CheckCircle2, RefreshCw, Truck } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  RefreshCw,
+  Truck,
+} from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { apiRequest, decodeTxnB64, encodeTxnB64 } from "@/lib/api/client";
 
@@ -15,6 +21,8 @@ interface SellerOrderRow {
   type: string;
   service: string;
   price: number;
+  deliveryProofTxId?: string | null;
+  deliveryProofConfirmedRound?: number | null;
   deliveryKind?: string;
   paymentStatus?: "held" | "released";
   heldAmountAlgo?: number | null;
@@ -56,6 +64,8 @@ export default function SellerDeliveryOrderPage() {
   const [delivering, setDelivering] = useState(false);
   const [error, setError] = useState("");
   const [proofPosted, setProofPosted] = useState(false);
+  const [proofTxId, setProofTxId] = useState<string>("");
+  const [proofExplorerUrl, setProofExplorerUrl] = useState<string>("");
   const instructionsRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => setMounted(true), []);
@@ -104,6 +114,15 @@ export default function SellerDeliveryOrderPage() {
     el.style.height = `${Math.max(140, el.scrollHeight)}px`;
   }, [deliveryInstructions]);
 
+  useEffect(() => {
+    if (!order?.deliveryProofTxId) return;
+    setProofPosted(true);
+    setProofTxId(order.deliveryProofTxId);
+    setProofExplorerUrl(
+      `https://testnet.explorer.perawallet.app/tx/${order.deliveryProofTxId}`,
+    );
+  }, [order?.deliveryProofTxId]);
+
   async function prepareAndSubmitDeliveryProof(): Promise<void> {
     if (!account || !order) return;
     setDelivering(true);
@@ -129,13 +148,18 @@ export default function SellerDeliveryOrderPage() {
 
       const signedB64 = encodeTxnB64(signed);
       setDeliveryStatus("Submitting proof on-chain...");
-      await apiRequest<{ txId: string }>("/api/wallet/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signedTxn: signedB64 }),
-      });
+      const submit = await apiRequest<{ txId: string; explorerUrl?: string }>(
+        "/api/wallet/submit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signedTxn: signedB64 }),
+        },
+      );
 
       setProofPosted(true);
+      setProofTxId(submit.txId);
+      setProofExplorerUrl(submit.explorerUrl ?? "");
       setDeliveryStatus("Delivery proof confirmed. Now submit access payload.");
     } catch (e) {
       setError(getErrorText(e));
@@ -190,6 +214,8 @@ export default function SellerDeliveryOrderPage() {
       }
 
       setProofPosted(false);
+      setProofTxId("");
+      setProofExplorerUrl("");
 
       await loadOrder();
     } catch (e) {
@@ -314,6 +340,21 @@ export default function SellerDeliveryOrderPage() {
                   <p className="status-good" style={{ marginBottom: 0 }}>
                     <CheckCircle2 size={14} /> Proof posted in this session.
                   </p>
+                )}
+                {proofTxId && (
+                  <a
+                    className="btn-outline"
+                    href={
+                      proofExplorerUrl ||
+                      `https://testnet.explorer.perawallet.app/tx/${proofTxId}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ width: "fit-content" }}
+                  >
+                    <ExternalLink size={14} />
+                    View Proof on Explorer
+                  </a>
                 )}
               </div>
 

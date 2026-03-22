@@ -79,7 +79,7 @@ function parseOrderNote(
 async function assertHasDeliveryProof(
   sellerAddress: string,
   orderTxId: string,
-): Promise<void> {
+): Promise<{ txId: string; confirmedRound: number }> {
   const indexer = getIndexer();
   const notePrefix = Buffer.from("a2a-delivery-proof:").toString("base64");
 
@@ -92,6 +92,7 @@ async function assertHasDeliveryProof(
     .do();
 
   for (const txn of (search.transactions ?? []) as Array<{
+    id?: string;
     note?: unknown;
     confirmedRound?: number | bigint;
   }>) {
@@ -107,7 +108,12 @@ async function assertHasDeliveryProof(
           : {};
       if (String(data.orderTxId ?? "") !== orderTxId) continue;
       const confirmed = Number(txn.confirmedRound ?? 0);
-      if (confirmed > 0) return;
+      if (confirmed > 0 && txn.id) {
+        return {
+          txId: txn.id,
+          confirmedRound: confirmed,
+        };
+      }
     } catch {
       continue;
     }
@@ -161,7 +167,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await assertHasDeliveryProof(sellerAddress, orderTxId);
+    const proof = await assertHasDeliveryProof(sellerAddress, orderTxId);
 
     const kind = normalizeDeliveryKind(
       deliveryKind ?? parsedOrder.deliveryKind,
@@ -179,6 +185,8 @@ export async function POST(req: NextRequest) {
       seller: sellerAddress,
       deliveredAt: Date.now(),
       deliveryKind: kind,
+      proofTxId: proof.txId,
+      proofConfirmedRound: proof.confirmedRound,
       fields: safeFields,
       instructions: instructions?.trim()
         ? instructions.trim().slice(0, 4000)
@@ -222,7 +230,12 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    return NextResponse.json({ success: true, delivery: saved, release });
+    return NextResponse.json({
+      success: true,
+      delivery: saved,
+      proof,
+      release,
+    });
   } catch (error) {
     const msg =
       error instanceof Error ? error.message : "Failed to submit delivery";

@@ -136,6 +136,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       order,
       delivery,
+      deliveryProofExplorerUrl:
+        network === "testnet" && delivery?.proofTxId
+          ? `https://testnet.explorer.perawallet.app/tx/${delivery.proofTxId}`
+          : null,
       feedback,
       paymentStatus: held?.status === "held" ? "held" : "released",
       heldAmountAlgo: held?.status === "held" ? held.amountAlgo : null,

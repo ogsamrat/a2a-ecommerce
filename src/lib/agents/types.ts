@@ -42,6 +42,8 @@ export interface DeliveryRecord {
   seller: string;
   deliveredAt: number;
   deliveryKind: NonNullable<OnChainListing["deliveryKind"]>;
+  proofTxId?: string;
+  proofConfirmedRound?: number;
   fields: Record<string, string>;
   instructions?: string;
 }

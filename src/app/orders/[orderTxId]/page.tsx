@@ -27,6 +27,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [delivery, setDelivery] = useState<DeliveryRecord | null>(null);
   const [feedback, setFeedback] = useState<FeedbackSummary | null>(null);
+  const [deliveryProofExplorerUrl, setDeliveryProofExplorerUrl] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<"held" | "released">(
     "released",
   );
@@ -54,6 +55,7 @@ export default function OrderDetailPage() {
         feedback: FeedbackSummary | null;
         paymentStatus: "held" | "released";
         heldAmountAlgo: number | null;
+        deliveryProofExplorerUrl: string | null;
         explorerUrl: string | null;
       }>(
         `/api/orders/get?orderTxId=${encodeURIComponent(orderTxId)}&buyer=${encodeURIComponent(account.address)}`,
@@ -61,6 +63,7 @@ export default function OrderDetailPage() {
       setOrder(data.order);
       setDelivery(data.delivery);
       setFeedback(data.feedback);
+      setDeliveryProofExplorerUrl(data.deliveryProofExplorerUrl ?? "");
       setPaymentStatus(data.paymentStatus ?? "released");
       setHeldAmountAlgo(data.heldAmountAlgo ?? null);
     } catch (e) {
@@ -68,6 +71,7 @@ export default function OrderDetailPage() {
       setOrder(null);
       setDelivery(null);
       setFeedback(null);
+      setDeliveryProofExplorerUrl("");
       setPaymentStatus("released");
       setHeldAmountAlgo(null);
     } finally {
@@ -125,6 +129,11 @@ export default function OrderDetailPage() {
                     <span style={{ wordBreak: "break-all" }}>
                       Listing TX: {order.listingTxId}
                     </span>
+                    {delivery?.proofTxId && (
+                      <span style={{ wordBreak: "break-all" }}>
+                        Delivery Proof TX: {delivery.proofTxId}
+                      </span>
+                    )}
                     <span>
                       Payment: {paymentStatus === "held" ? "Held" : "Released"}
                       {paymentStatus === "held" && heldAmountAlgo
@@ -143,8 +152,22 @@ export default function OrderDetailPage() {
                       href={`https://testnet.explorer.perawallet.app/tx/${order.orderTxId}`}
                     >
                       <ExternalLink size={14} />
-                      Explorer
+                      Order TX
                     </a>
+                    {delivery?.proofTxId && (
+                      <a
+                        className="btn-outline"
+                        target="_blank"
+                        rel="noreferrer"
+                        href={
+                          deliveryProofExplorerUrl ||
+                          `https://testnet.explorer.perawallet.app/tx/${delivery.proofTxId}`
+                        }
+                      >
+                        <ExternalLink size={14} />
+                        Proof TX
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
@@ -164,6 +187,7 @@ export default function OrderDetailPage() {
         <AccessDeliveryPanel
           order={order}
           delivery={delivery}
+          deliveryProofExplorerUrl={deliveryProofExplorerUrl}
           loading={orderLoading}
         />
       </section>

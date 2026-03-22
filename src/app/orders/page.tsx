@@ -10,6 +10,8 @@ import type { FeedbackSummary, OrderRecord } from "@/lib/agents/types";
 
 interface OrdersApiRow extends OrderRecord {
   deliveredAt: number | null;
+  deliveryProofTxId: string | null;
+  deliveryProofConfirmedRound: number | null;
   feedback: FeedbackSummary | null;
   paymentStatus?: "held" | "released";
   heldAmountAlgo?: number | null;
@@ -107,8 +109,8 @@ export default function OrdersPage() {
                   {o.paymentStatus === "held" && o.heldAmountAlgo
                     ? ` (${o.heldAmountAlgo} ALGO)`
                     : ""}{" "}
-                  • Delivery: {o.deliveredAt ? "Delivered" : "Pending"} •
-                  Feedback:{" "}
+                  • Delivery: {o.deliveredAt ? "Delivered" : "Pending"} • Proof:{" "}
+                  {o.deliveryProofTxId ? "Posted" : "Pending"} • Feedback:{" "}
                   {o.feedback
                     ? o.feedback.isUndone
                       ? "Undone"
@@ -128,8 +130,19 @@ export default function OrdersPage() {
                   href={`https://testnet.explorer.perawallet.app/tx/${o.orderTxId}`}
                 >
                   <ExternalLink size={14} />
-                  Explorer
+                  Order TX
                 </a>
+                {o.deliveryProofTxId && (
+                  <a
+                    className="btn-outline"
+                    target="_blank"
+                    rel="noreferrer"
+                    href={`https://testnet.explorer.perawallet.app/tx/${o.deliveryProofTxId}`}
+                  >
+                    <ExternalLink size={14} />
+                    Proof TX
+                  </a>
+                )}
               </div>
             </div>
           ))}

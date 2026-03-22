@@ -6,6 +6,7 @@ import { useWallet } from "@txnlab/use-wallet-react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ExternalLink,
   FileText,
   Package,
   RefreshCw,
@@ -45,6 +46,8 @@ interface SellerOrderRow {
   type: string;
   service: string;
   price: number;
+  deliveryProofTxId?: string | null;
+  deliveryProofConfirmedRound?: number | null;
   deliveryKind?: string;
   paymentStatus?: "held" | "released";
   heldAmountAlgo?: number | null;
@@ -472,15 +475,32 @@ export default function SellPage() {
                     {o.paymentStatus === "held" && o.heldAmountAlgo
                       ? ` • Held: ${o.heldAmountAlgo} ALGO`
                       : ""}
+                    {o.deliveryProofTxId
+                      ? " • Proof Posted"
+                      : " • Proof Pending"}
                   </span>
                 </div>
-                <Link
-                  className="btn-outline"
-                  href={`/sell/delivery/${encodeURIComponent(o.orderTxId)}`}
-                  style={{ whiteSpace: "nowrap", flexShrink: 0 }}
-                >
-                  Open Delivery
-                </Link>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <Link
+                    className="btn-outline"
+                    href={`/sell/delivery/${encodeURIComponent(o.orderTxId)}`}
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    Open Delivery
+                  </Link>
+                  {o.deliveryProofTxId && (
+                    <a
+                      className="btn-outline"
+                      target="_blank"
+                      rel="noreferrer"
+                      href={`https://testnet.explorer.perawallet.app/tx/${o.deliveryProofTxId}`}
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      <ExternalLink size={14} />
+                      Proof TX
+                    </a>
+                  )}
+                </div>
               </div>
             ))}
             {loadingOrders && (

@@ -65,6 +65,8 @@ function parseOrderNote(
 
 type EnrichedOrder = OrderRecord & {
   deliveredAt: number | null;
+  deliveryProofTxId: string | null;
+  deliveryProofConfirmedRound: number | null;
   feedback: Awaited<ReturnType<typeof getFeedbackForOrder>>;
   paymentStatus: "held" | "released";
   heldAmountAlgo: number | null;
@@ -131,6 +133,8 @@ async function mergeOrders(
         return {
           ...o,
           deliveredAt: delivery?.deliveredAt ?? null,
+          deliveryProofTxId: delivery?.proofTxId ?? null,
+          deliveryProofConfirmedRound: delivery?.proofConfirmedRound ?? null,
           feedback,
           paymentStatus: held?.status === "held" ? "held" : "released",
           heldAmountAlgo: held?.status === "held" ? held.amountAlgo : null,

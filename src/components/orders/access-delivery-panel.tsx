@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, ExternalLink, Eye, EyeOff } from "lucide-react";
 import type { DeliveryRecord, OrderRecord } from "@/lib/agents/types";
 
 function mask(value: string): string {
@@ -12,10 +12,12 @@ function mask(value: string): string {
 export function AccessDeliveryPanel({
   order,
   delivery,
+  deliveryProofExplorerUrl,
   loading,
 }: {
   order: OrderRecord | null;
   delivery: DeliveryRecord | null;
+  deliveryProofExplorerUrl?: string;
   loading?: boolean;
 }) {
   const [reveal, setReveal] = useState<Record<string, boolean>>({});
@@ -58,6 +60,32 @@ export function AccessDeliveryPanel({
 
       {!loading && delivery && (
         <div className="list-stack">
+          {delivery.proofTxId && (
+            <div className="list-item">
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0 }}>On-chain Delivery Proof</p>
+                <span style={{ wordBreak: "break-all" }}>
+                  {delivery.proofTxId}
+                </span>
+                {delivery.proofConfirmedRound ? (
+                  <span>Confirmed round: {delivery.proofConfirmedRound}</span>
+                ) : null}
+              </div>
+              <a
+                className="btn-outline"
+                target="_blank"
+                rel="noreferrer"
+                href={
+                  deliveryProofExplorerUrl ||
+                  `https://testnet.explorer.perawallet.app/tx/${delivery.proofTxId}`
+                }
+              >
+                <ExternalLink size={14} />
+                View Proof
+              </a>
+            </div>
+          )}
+
           {delivery.instructions && (
             <div className="list-item" style={{ alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
