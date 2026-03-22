@@ -51,7 +51,9 @@ export async function POST(req: NextRequest) {
         "buyer",
         "Buyer Agent",
         "transaction",
-        `Executing real payment on Algorand...\n**${deal.finalPrice} ALGO** to **${deal.sellerName}** (\`${deal.sellerAddress.slice(0, 12)}...\`)`,
+        autoBuy
+          ? `Creating on-chain order marker for vault escrow...\n**${deal.finalPrice} ALGO** reserved for **${deal.sellerName}** (\`${deal.sellerAddress.slice(0, 12)}...\`) after marker confirmation.`
+          : `Executing real payment on Algorand...\n**${deal.finalPrice} ALGO** to **${deal.sellerName}** (\`${deal.sellerAddress.slice(0, 12)}...\`)`,
       ),
     ];
 
@@ -109,12 +111,16 @@ export async function POST(req: NextRequest) {
         "system",
         "Algorand",
         "transaction",
-        `**Payment Confirmed On-Chain!**\n` +
+        (autoBuy
+          ? `**Order Marker Confirmed On-Chain!**\n`
+          : `**Payment Confirmed On-Chain!**\n`) +
           `• **TX ID:** \`${escrow.txId}\`\n` +
           `• **Confirmed Round:** ${escrow.confirmedRound}\n` +
           `• **Order Marker Amount:** ${escrow.amount} ALGO\n` +
-          `• **Buyer Balance:** ${buyerBal.toFixed(4)} ALGO\n` +
-          `• **Seller Balance:** ${sellerBal.toFixed(4)} ALGO`,
+          `• **Buyer Balance:** ${buyerBal.toFixed(4)} ALGO` +
+          (autoBuy
+            ? ""
+            : `\n• **Seller Balance:** ${sellerBal.toFixed(4)} ALGO`),
         { escrow, buyerBal, sellerBal },
       ),
     );

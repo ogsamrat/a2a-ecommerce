@@ -27,6 +27,7 @@ async function negotiateWithListing(
   const sellerReputation = await getAgentReputation(listing.sender);
 
   let zkVerified = false;
+  let zkStatus: "verified" | "failed" | "unverifiable" | "none" = "none";
   if (listing.zkCommitment) {
     const secret = getSellerSecret(listing.seller);
     if (secret) {
@@ -37,14 +38,25 @@ async function negotiateWithListing(
         listing.price,
         listing.description,
       );
+      zkStatus = zkVerified ? "verified" : "failed";
+    } else {
+      zkStatus = "unverifiable";
     }
+
+    const zkText =
+      zkStatus === "verified"
+        ? "Verified ✓"
+        : zkStatus === "failed"
+          ? "Verification failed"
+          : "Proof unavailable (cannot verify)";
+
     actions.push(
       createAction(
         "buyer",
         "Buyer Agent",
         "verification",
-        `SHA-256 ZK for **${listing.seller}**: ${zkVerified ? "Verified ✓" : "Unverified"} (commitment: \`${listing.zkCommitment.slice(0, 24)}...\`)`,
-        { zkVerified, commitment: listing.zkCommitment },
+        `SHA-256 ZK for **${listing.seller}**: ${zkText} (commitment: \`${listing.zkCommitment.slice(0, 24)}...\`)`,
+        { zkVerified, zkStatus, commitment: listing.zkCommitment },
       ),
     );
   }
@@ -194,6 +206,7 @@ async function negotiateWithListing(
       accepted,
       messages,
       zkVerified,
+      zkStatus,
       rounds:
         messages.length > 0 ? messages[messages.length - 1].payload.round : 0,
       sellerReputation,

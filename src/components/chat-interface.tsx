@@ -26,6 +26,19 @@ const TYPE_CFG: Record<string, { label: string; cls: string }> = {
   result: { label: "result", cls: "badge-green" },
 };
 
+function truncateIdentifier(value: string): string {
+  const raw = value.trim();
+  if (raw.length <= 24) return raw;
+  return `${raw.slice(0, 12)}...${raw.slice(-8)}`;
+}
+
+function truncateLongIdsInText(value: string): string {
+  // Truncate long uppercase/alphanumeric IDs (TX IDs, addresses) to avoid layout overlap.
+  return value.replace(/\b[A-Z0-9]{28,}\b/g, (match) =>
+    truncateIdentifier(match),
+  );
+}
+
 function renderContent(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[.*?\]\(.*?\))/g);
   return parts.map((part, i) => {
@@ -48,7 +61,7 @@ function renderContent(text: string): React.ReactNode {
             color: "var(--text-2)",
           }}
         >
-          {part.slice(1, -1)}
+          {truncateIdentifier(part.slice(1, -1))}
         </code>
       );
     const m = part.match(/^\[(.*?)\]\((.*?)\)$/);
@@ -71,7 +84,7 @@ function renderContent(text: string): React.ReactNode {
           <ExternalLink size={10} />
         </a>
       );
-    return <span key={i}>{part}</span>;
+    return <span key={i}>{truncateLongIdsInText(part)}</span>;
   });
 }
 

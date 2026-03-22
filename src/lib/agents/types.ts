@@ -91,6 +91,7 @@ export interface NegotiationSession {
   accepted: boolean;
   messages: X402Message[];
   zkVerified: boolean;
+  zkStatus: "verified" | "failed" | "unverifiable" | "none";
   rounds: number;
   sellerReputation?: number;
 }

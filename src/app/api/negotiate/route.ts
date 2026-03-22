@@ -23,6 +23,15 @@ export async function POST(req: NextRequest) {
     const bestDeal = selectBestDeal(sessions);
 
     if (bestDeal) {
+      const zkLabel =
+        bestDeal.zkStatus === "verified"
+          ? "Yes"
+          : bestDeal.zkStatus === "failed"
+            ? "No (verification failed)"
+            : bestDeal.zkStatus === "unverifiable"
+              ? "Unavailable (proof not published)"
+              : "N/A (no commitment)";
+
       const summary = await generateDealSummary(
         bestDeal.sellerName,
         bestDeal.service,
@@ -42,7 +51,7 @@ export async function POST(req: NextRequest) {
             `**Final Price:** ${bestDeal.finalPrice} ALGO\n` +
             `**Original:** ${bestDeal.originalPrice} ALGO\n` +
             `**Seller Reputation:** ${bestDeal.sellerReputation ?? 0}/100\n` +
-            `**ZK Verified:** ${bestDeal.zkVerified ? "Yes" : "No"}\n` +
+            `**ZK Verified:** ${zkLabel}\n` +
             `**On-Chain Listing TX:** \`${bestDeal.listingTxId.slice(0, 20)}...\``,
           { bestDeal },
         ),

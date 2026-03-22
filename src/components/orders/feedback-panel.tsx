@@ -16,6 +16,36 @@ function isWalletCancelError(error: unknown): boolean {
   );
 }
 
+function isWalletPromptTimeout(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.toLowerCase().includes("wallet signature request timed out");
+}
+
+function isOnChainLogicReject(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("logic eval error") ||
+    normalized.includes("err opcode executed") ||
+    normalized.includes("transactionpool.remember")
+  );
+}
+
+async function signWithTimeout(
+  signTransactions: (txns: Uint8Array[]) => Promise<(Uint8Array | null)[]>,
+  txns: Uint8Array[],
+  timeoutMs = 45000,
+): Promise<(Uint8Array | null)[]> {
+  return await Promise.race([
+    signTransactions(txns),
+    new Promise<(Uint8Array | null)[]>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("Wallet signature request timed out"));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 export function FeedbackPanel({
   buyerAddress,
   order,
@@ -100,9 +130,12 @@ export function FeedbackPanel({
       setMsg("Feedback saved for marketplace reputation.");
 
       if (publishOnChain) {
-        setMsg(
-          "Feedback saved for marketplace reputation. Waiting for wallet signature to publish on-chain...",
-        );
+        if (!submitRes.wasCreated) {
+          setMsg(
+            "Feedback updated for marketplace reputation. On-chain publish is allowed only on first feedback create for this order.",
+          );
+          return;
+        }
         try {
           const score = Math.max(
             0,
@@ -124,7 +157,10 @@ export function FeedbackPanel({
           const bytes = Uint8Array.from(atob(repTxn.unsignedTxn), (c) =>
             c.charCodeAt(0),
           );
-          const signed = (await signTransactions([bytes]))[0];
+          setMsg(
+            "Feedback saved for marketplace reputation. Waiting for wallet signature to publish on-chain...",
+          );
+          const signed = (await signWithTimeout(signTransactions, [bytes]))[0];
           if (!signed) throw new Error("Wallet returned empty signature");
           const b64 = btoa(String.fromCharCode(...Array.from(signed)));
           await apiRequest<{ txId: string }>("/api/wallet/submit", {
@@ -139,6 +175,20 @@ export function FeedbackPanel({
             setMsg(
               "Feedback saved for marketplace reputation. On-chain publish was canceled in wallet.",
             );
+            return;
+          }
+          if (isWalletPromptTimeout(publishError)) {
+            setError(
+              "Wallet signature prompt did not appear in time. Open your wallet extension/app and try Publish On-Chain again.",
+            );
+            setMsg("Feedback saved for marketplace reputation.");
+            return;
+          }
+          if (isOnChainLogicReject(publishError)) {
+            setError(
+              "On-chain publish was rejected by contract rules (already published or not allowed for this state). Marketplace feedback is still saved.",
+            );
+            setMsg("Feedback saved for marketplace reputation.");
             return;
           }
           throw publishError;
