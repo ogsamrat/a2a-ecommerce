@@ -5,6 +5,7 @@ import { getRememberedOrders, rememberOrders } from "@/lib/orders/registry";
 import { getDelivery } from "@/lib/delivery/registry";
 import { getFeedbackForOrder } from "@/lib/feedback/ledger";
 import { getHeldPayment } from "@/lib/blockchain/vault";
+import { fetchListingByTxId } from "@/lib/blockchain/listings";
 import type { OnChainListing, OrderRecord } from "@/lib/agents/types";
 
 function normalizeType(value: string): string {
@@ -73,14 +74,45 @@ async function mergeOrders(
   primary: OrderRecord[],
   fallback: OrderRecord[],
 ): Promise<EnrichedOrder[]> {
+  const listingCache = new Map<
+    string,
+    Awaited<ReturnType<typeof fetchListingByTxId>>
+  >();
+
+  async function hydrateOrder(order: OrderRecord): Promise<OrderRecord> {
+    if (order.type !== "unknown" || !order.listingTxId) return order;
+
+    if (!listingCache.has(order.listingTxId)) {
+      listingCache.set(
+        order.listingTxId,
+        await fetchListingByTxId(order.listingTxId).catch(() => null),
+      );
+    }
+    const listing = listingCache.get(order.listingTxId);
+    if (!listing) return order;
+
+    return {
+      ...order,
+      type: listing.type || "digital-access",
+      service:
+        order.service && order.service !== "Unnamed Service"
+          ? order.service
+          : listing.service,
+      description: order.description || listing.description || "",
+      deliveryKind: order.deliveryKind ?? listing.deliveryKind,
+      accessDurationDays:
+        order.accessDurationDays ?? listing.accessDurationDays,
+    };
+  }
+
   const byId = new Map<string, OrderRecord>();
   for (const item of fallback) {
     if (!item.orderTxId) continue;
-    byId.set(item.orderTxId, item);
+    byId.set(item.orderTxId, await hydrateOrder(item));
   }
   for (const item of primary) {
     if (!item.orderTxId) continue;
-    byId.set(item.orderTxId, item);
+    byId.set(item.orderTxId, await hydrateOrder(item));
   }
 
   const merged = [...byId.values()].sort((a, b) => {

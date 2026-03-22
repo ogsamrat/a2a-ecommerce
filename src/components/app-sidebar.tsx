@@ -66,19 +66,6 @@ export function AppSidebar() {
       <div className="sidebar-wallet">
         <WalletConnect />
       </div>
-
-      <div className="status-panel cyber-card terminal-panel">
-        <p className="code-tag">SYSTEM STATUS</p>
-        <p>
-          Network: <span>ONLINE</span>
-        </p>
-        <p>
-          Indexer: <span>READY</span>
-        </p>
-        <p>
-          Agent Mesh: <span>LIVE</span>
-        </p>
-      </div>
     </aside>
   );
 }

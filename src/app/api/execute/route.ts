@@ -3,6 +3,7 @@ import { executePayment, getBalance } from "@/lib/blockchain/algorand";
 import { createAction } from "@/lib/a2a/messaging";
 import type { NegotiationSession } from "@/lib/agents/types";
 import { canSpendFromVault, holdVaultFunds } from "@/lib/blockchain/vault";
+import { fetchListingByTxId } from "@/lib/blockchain/listings";
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,6 +55,10 @@ export async function POST(req: NextRequest) {
       ),
     ];
 
+    const listing = await fetchListingByTxId(deal.listingTxId).catch(
+      () => null,
+    );
+
     const orderNote =
       "a2a-order:" +
       JSON.stringify({
@@ -61,11 +66,12 @@ export async function POST(req: NextRequest) {
         listingTxId: deal.listingTxId,
         buyer: buyerAddress ?? "",
         seller: deal.sellerAddress,
-        type: "unknown",
-        service: deal.service,
+        type: listing?.type ?? "digital-access",
+        service: listing?.service ?? deal.service,
         price: deal.finalPrice,
-        description: "",
-        deliveryKind: "other",
+        description: listing?.description ?? "",
+        deliveryKind: listing?.deliveryKind ?? "other",
+        accessDurationDays: listing?.accessDurationDays,
         createdAt: Date.now(),
       });
 

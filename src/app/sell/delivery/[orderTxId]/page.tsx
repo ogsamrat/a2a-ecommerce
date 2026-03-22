@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useWallet } from "@txnlab/use-wallet-react";
 import { AlertTriangle, CheckCircle2, RefreshCw, Truck } from "lucide-react";
@@ -24,6 +24,20 @@ function getErrorText(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
 }
 
+function prettyType(type: string | undefined): string {
+  const raw = (type ?? "").trim().toLowerCase();
+  if (!raw || raw === "unknown") return "Digital Access";
+  return raw
+    .split("-")
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(" ");
+}
+
+function shortAddress(address: string): string {
+  if (!address || address.length < 12) return address;
+  return `${address.slice(0, 8)}...${address.slice(-6)}`;
+}
+
 export default function SellerDeliveryOrderPage() {
   const { orderTxId } = useParams<{ orderTxId: string }>();
   const { activeAccount, signTransactions } = useWallet();
@@ -41,6 +55,8 @@ export default function SellerDeliveryOrderPage() {
   const [deliveryStatus, setDeliveryStatus] = useState<string>("");
   const [delivering, setDelivering] = useState(false);
   const [error, setError] = useState("");
+  const [proofPosted, setProofPosted] = useState(false);
+  const instructionsRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => setMounted(true), []);
   const account = mounted ? activeAccount : null;
@@ -81,6 +97,13 @@ export default function SellerDeliveryOrderPage() {
     void loadOrder();
   }, [loadOrder]);
 
+  useEffect(() => {
+    const el = instructionsRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.max(140, el.scrollHeight)}px`;
+  }, [deliveryInstructions]);
+
   async function prepareAndSubmitDeliveryProof(): Promise<void> {
     if (!account || !order) return;
     setDelivering(true);
@@ -112,6 +135,7 @@ export default function SellerDeliveryOrderPage() {
         body: JSON.stringify({ signedTxn: signedB64 }),
       });
 
+      setProofPosted(true);
       setDeliveryStatus("Delivery proof confirmed. Now submit access payload.");
     } catch (e) {
       setError(getErrorText(e));
@@ -136,6 +160,12 @@ export default function SellerDeliveryOrderPage() {
         fields[k] = v;
       }
 
+      if (!deliveryInstructions.trim() && Object.keys(fields).length === 0) {
+        throw new Error(
+          "Add delivery instructions or at least one access field before submitting.",
+        );
+      }
+
       const payload = await apiRequest<{
         success: boolean;
         release?: { txId: string; amountAlgo: number } | null;
@@ -158,6 +188,8 @@ export default function SellerDeliveryOrderPage() {
       } else {
         setDeliveryStatus("Delivery saved.");
       }
+
+      setProofPosted(false);
 
       await loadOrder();
     } catch (e) {
@@ -201,67 +233,128 @@ export default function SellerDeliveryOrderPage() {
 
         {order && (
           <>
-            <div className="list-item" style={{ marginBottom: 12 }}>
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: 0 }}>{order.service}</p>
-                <span>
-                  {order.type} • {order.price} ALGO • Buyer{" "}
-                  {String(order.buyer).slice(0, 8)}…
-                </span>
+            <div
+              className="cyber-card"
+              style={{
+                marginBottom: 14,
+                background:
+                  "linear-gradient(180deg, rgba(18,18,28,0.95), rgba(12,12,20,0.95))",
+              }}
+            >
+              <div style={{ display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, fontWeight: 700 }}>{order.service}</p>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <span>Type: {prettyType(order.type)}</span>
+                  <span>Price: {order.price} ALGO</span>
+                  <span>Buyer: {shortAddress(order.buyer)}</span>
+                  <span>
+                    Payment:{" "}
+                    {order.paymentStatus === "held" ? "Held" : "Released"}
+                    {order.paymentStatus === "held" && order.heldAmountAlgo
+                      ? ` (${order.heldAmountAlgo} ALGO)`
+                      : ""}
+                  </span>
+                </div>
                 <span style={{ wordBreak: "break-all" }}>
                   Order TX: {order.orderTxId}
                 </span>
-                <span>
-                  Payment:{" "}
-                  {order.paymentStatus === "held" ? "Held" : "Released"}
-                  {order.paymentStatus === "held" && order.heldAmountAlgo
-                    ? ` • ${order.heldAmountAlgo} ALGO`
-                    : ""}
-                </span>
               </div>
-              <Link href="/sell" className="btn-outline">
-                Back to Sell
-              </Link>
+              <div style={{ marginTop: 10 }}>
+                <Link href="/sell" className="btn-outline">
+                  Back to Sell
+                </Link>
+              </div>
             </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                className="btn-outline"
-                type="button"
-                disabled={delivering}
-                onClick={() => prepareAndSubmitDeliveryProof()}
-              >
-                Post Delivery Proof
-              </button>
-              <button
-                className="btn-neon"
-                type="button"
-                disabled={delivering}
-                onClick={() => submitDelivery()}
-              >
-                Submit Delivery
-              </button>
-            </div>
-
-            <label style={{ marginTop: 10, display: "block" }}>
-              <span>DELIVERY INSTRUCTIONS</span>
-              <textarea
-                className="cyber-textarea"
-                value={deliveryInstructions}
-                onChange={(e) => setDeliveryInstructions(e.target.value)}
-              />
-            </label>
 
             <div
+              className="delivery-two-col"
               style={{
-                marginTop: 10,
+                display: "grid",
+                gridTemplateColumns:
+                  "minmax(260px, 0.9fr) minmax(360px, 1.1fr)",
+                gap: 12,
+                alignItems: "start",
+              }}
+            >
+              <div className="cyber-card" style={{ display: "grid", gap: 10 }}>
+                <span className="code-tag">POST DELIVERY FLOW</span>
+                <div
+                  className="status-muted"
+                  style={{ display: "grid", gap: 5 }}
+                >
+                  <p>1. Post delivery proof transaction first.</p>
+                  <p>2. Add buyer instructions and credentials.</p>
+                  <p>3. Submit payload to release held payment.</p>
+                </div>
+                <div className="delivery-actions">
+                  <button
+                    className="btn-outline"
+                    type="button"
+                    disabled={delivering}
+                    onClick={() => prepareAndSubmitDeliveryProof()}
+                  >
+                    Post Delivery Proof
+                  </button>
+                  <button
+                    className="btn-neon"
+                    type="button"
+                    disabled={delivering}
+                    onClick={() => submitDelivery()}
+                  >
+                    Submit Delivery
+                  </button>
+                </div>
+                {proofPosted && (
+                  <p className="status-good" style={{ marginBottom: 0 }}>
+                    <CheckCircle2 size={14} /> Proof posted in this session.
+                  </p>
+                )}
+              </div>
+
+              <div className="cyber-card" style={{ display: "grid", gap: 8 }}>
+                <span className="code-tag">
+                  DELIVERY INSTRUCTIONS FOR BUYER
+                </span>
+                <textarea
+                  ref={instructionsRef}
+                  className="cyber-textarea delivery-instructions-box"
+                  value={deliveryInstructions}
+                  onChange={(e) => setDeliveryInstructions(e.target.value)}
+                  placeholder="Explain login steps, what the buyer receives, expiry details, and support instructions..."
+                  style={{ minHeight: 140, overflow: "hidden", resize: "none" }}
+                />
+              </div>
+            </div>
+
+            <div
+              className="cyber-card"
+              style={{
+                marginTop: 12,
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,
               }}
             >
+              <span className="code-tag">
+                ACCESS PAYLOAD (ENCRYPTED AT REST)
+              </span>
               {deliveryFields.map((row, idx) => (
-                <div key={idx} style={{ display: "flex", gap: 8 }}>
+                <div
+                  className="delivery-field-row"
+                  key={idx}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <input
                     value={row.key}
                     onChange={(e) =>
@@ -271,8 +364,9 @@ export default function SellerDeliveryOrderPage() {
                         ),
                       )
                     }
-                    placeholder="> key"
+                    placeholder="field name (e.g. username)"
                     className="cyber-select"
+                    style={{ flex: "1 1 220px" }}
                   />
                   <input
                     value={row.value}
@@ -283,8 +377,21 @@ export default function SellerDeliveryOrderPage() {
                         ),
                       )
                     }
-                    placeholder="> value"
+                    placeholder="field value"
+                    className="delivery-value-input"
+                    style={{ flex: "1.4 1 280px" }}
                   />
+                  <button
+                    className="btn-outline"
+                    type="button"
+                    onClick={() =>
+                      setDeliveryFields((p) => p.filter((_, i) => i !== idx))
+                    }
+                    disabled={deliveryFields.length <= 1}
+                    style={{ minWidth: 96 }}
+                  >
+                    Remove
+                  </button>
                 </div>
               ))}
               <button

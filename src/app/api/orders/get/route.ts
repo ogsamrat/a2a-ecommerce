@@ -4,6 +4,7 @@ import { getIndexer, getNetworkMode } from "@/lib/blockchain/algorand";
 import { getDelivery } from "@/lib/delivery/registry";
 import { getFeedbackForOrder } from "@/lib/feedback/ledger";
 import { getHeldPayment } from "@/lib/blockchain/vault";
+import { fetchListingByTxId } from "@/lib/blockchain/listings";
 import type { OnChainListing, OrderRecord } from "@/lib/agents/types";
 
 function decodeNote(noteRaw: unknown): string {
@@ -101,17 +102,29 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const listing =
+      parsed.type === "unknown" && parsed.listingTxId
+        ? await fetchListingByTxId(parsed.listingTxId).catch(() => null)
+        : null;
+
     const order: OrderRecord = {
       orderTxId,
       listingTxId: parsed.listingTxId,
       buyer: parsed.buyer,
       seller: parsed.seller,
-      type: parsed.type,
-      service: parsed.service,
+      type:
+        parsed.type === "unknown"
+          ? (listing?.type ?? "digital-access")
+          : parsed.type,
+      service:
+        parsed.service && parsed.service !== "Unnamed Service"
+          ? parsed.service
+          : (listing?.service ?? parsed.service),
       price: parsed.price,
-      description: parsed.description,
-      deliveryKind: parsed.deliveryKind,
-      accessDurationDays: parsed.accessDurationDays,
+      description: parsed.description || listing?.description || "",
+      deliveryKind: parsed.deliveryKind ?? listing?.deliveryKind,
+      accessDurationDays:
+        parsed.accessDurationDays ?? listing?.accessDurationDays,
       createdAt: parsed.createdAt,
       confirmedRound: Number(txn?.confirmedRound ?? 0),
     };

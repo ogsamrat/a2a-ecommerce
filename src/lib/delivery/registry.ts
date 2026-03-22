@@ -62,13 +62,27 @@ export async function getDelivery(
 
   // Backward compatibility: read plaintext legacy records if present.
   if (!stored.encryptedPayload) {
+    const legacyFields = stored.fields ?? {};
+    const legacyInstructions = stored.instructions;
+
+    // Migrate legacy plaintext record to encrypted-at-rest representation.
+    stored.encryptedPayload = encryptDeliveryPayload(
+      JSON.stringify({
+        fields: legacyFields,
+        instructions: legacyInstructions,
+      }),
+    );
+    delete stored.fields;
+    delete stored.instructions;
+    await writeLedger(ledger);
+
     return {
       orderTxId: stored.orderTxId,
       seller: stored.seller,
       deliveredAt: stored.deliveredAt,
       deliveryKind: stored.deliveryKind,
-      fields: stored.fields ?? {},
-      instructions: stored.instructions,
+      fields: legacyFields,
+      instructions: legacyInstructions,
     };
   }
 

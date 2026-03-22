@@ -2,7 +2,9 @@
 
 import { useWallet } from "@txnlab/use-wallet-react";
 import type { Wallet } from "@txnlab/use-wallet-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+const BALANCE_REFRESH_MS = 6000;
 
 function truncateAddr(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -25,20 +27,45 @@ export function WalletConnect() {
   const [balance, setBalance] = useState<number | null>(null);
   const [connectError, setConnectError] = useState("");
 
+  const refreshBalance = useCallback(async () => {
+    if (!activeAccount?.address) {
+      setBalance(null);
+      return;
+    }
+    try {
+      const r = await fetch(
+        `/api/wallet/info?address=${activeAccount.address}`,
+      );
+      const d = await r.json();
+      setBalance(d.balance ?? null);
+    } catch {
+      setBalance(null);
+    }
+  }, [activeAccount?.address]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!activeAccount?.address) {
-      setBalance(null);
-      return;
-    }
-    fetch(`/api/wallet/info?address=${activeAccount.address}`)
-      .then((r) => r.json())
-      .then((d) => setBalance(d.balance ?? null))
-      .catch(() => setBalance(null));
-  }, [activeAccount?.address]);
+    void refreshBalance();
+  }, [refreshBalance]);
+
+  useEffect(() => {
+    if (!activeAccount?.address) return;
+
+    const id = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      void refreshBalance();
+    }, BALANCE_REFRESH_MS);
+
+    return () => clearInterval(id);
+  }, [activeAccount?.address, refreshBalance]);
 
   if (!mounted || !isReady) {
     return (

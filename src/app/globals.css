@@ -928,6 +928,59 @@ p {
   resize: vertical;
 }
 
+.cyber-select:focus,
+.cyber-select:focus-visible,
+.cyber-textarea:focus,
+.cyber-textarea:focus-visible,
+.delivery-value-input:focus,
+.delivery-value-input:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px rgb(0 255 136 / 30%);
+}
+
+.delivery-value-input {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--foreground);
+  padding: 0.65rem 0.8rem;
+  font-family: var(--font-body), monospace;
+}
+
+.delivery-value-input::placeholder,
+.delivery-instructions-box::placeholder {
+  color: var(--muted-foreground);
+}
+
+.delivery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(190px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.delivery-actions .btn-outline,
+.delivery-actions .btn-neon {
+  width: 100%;
+}
+
+.delivery-field-row {
+  width: 100%;
+}
+
+@media (max-width: 1120px) {
+  .delivery-two-col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .delivery-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .market-toolbar {
   display: grid;
   grid-template-columns: 1fr 180px 130px auto;

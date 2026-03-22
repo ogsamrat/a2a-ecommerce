@@ -43,6 +43,34 @@ async function withTimeout<T>(
   ]);
 }
 
+function decodeNote(noteRaw: unknown): string {
+  if (!noteRaw) return "";
+  if (typeof noteRaw === "string") {
+    try {
+      return Buffer.from(noteRaw, "base64").toString("utf-8");
+    } catch {
+      return "";
+    }
+  }
+  if (noteRaw instanceof Uint8Array) {
+    return new TextDecoder().decode(noteRaw);
+  }
+  return "";
+}
+
+function parseListingNote(noteStr: string): ListingData | null {
+  if (!noteStr.startsWith(LISTING_PREFIX)) return null;
+  try {
+    const parsed = JSON.parse(
+      noteStr.slice(LISTING_PREFIX.length),
+    ) as ListingData;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchListingsFromChain(): Promise<OnChainListing[]> {
   const indexer = getIndexer();
 
@@ -75,15 +103,9 @@ export async function fetchListingsFromChain(): Promise<OnChainListing[]> {
       const noteRaw = txn.note;
       if (!noteRaw) continue;
 
-      const noteStr =
-        typeof noteRaw === "string"
-          ? Buffer.from(noteRaw, "base64").toString("utf-8")
-          : new TextDecoder().decode(noteRaw as Uint8Array);
-      if (!noteStr.startsWith(LISTING_PREFIX)) continue;
-
-      const data: ListingData = JSON.parse(
-        noteStr.slice(LISTING_PREFIX.length),
-      );
+      const noteStr = decodeNote(noteRaw);
+      const data = parseListingNote(noteStr);
+      if (!data) continue;
 
       try {
         algosdk.Address.fromString(String(data.seller));
@@ -115,6 +137,58 @@ export async function fetchListingsFromChain(): Promise<OnChainListing[]> {
   }
 
   return listings;
+}
+
+export async function fetchListingByTxId(
+  listingTxId: string,
+): Promise<OnChainListing | null> {
+  if (!listingTxId?.trim()) return null;
+
+  const indexer = getIndexer();
+  const lookup = await withTimeout(
+    indexer.lookupTransactionByID(listingTxId).do(),
+    QUERY_TIMEOUT_MS,
+  );
+  const txn = (
+    lookup as {
+      transaction?: {
+        id?: string;
+        sender?: string;
+        note?: unknown;
+        confirmedRound?: number | bigint;
+      };
+    }
+  ).transaction;
+
+  if (!txn?.id) return null;
+  const noteStr = decodeNote(txn.note);
+  const data = parseListingNote(noteStr);
+  if (!data) return null;
+
+  try {
+    algosdk.Address.fromString(String(data.seller));
+  } catch {
+    return null;
+  }
+
+  return {
+    txId: txn.id,
+    sender: txn.sender ?? "",
+    type: data.type,
+    service: data.service,
+    price: data.price,
+    seller: data.seller,
+    description: data.description,
+    timestamp: data.timestamp,
+    zkCommitment: data.zkCommitment,
+    deliveryKind: data.deliveryKind as OnChainListing["deliveryKind"],
+    accessDurationDays:
+      data.accessDurationDays !== undefined &&
+      Number.isFinite(Number(data.accessDurationDays))
+        ? Number(data.accessDurationDays)
+        : undefined,
+    round: Number(txn.confirmedRound ?? 0),
+  };
 }
 
 export function filterListings(

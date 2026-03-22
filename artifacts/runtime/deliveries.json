@@ -5,11 +5,7 @@
       "seller": "HEJLR7XEVFWLNKIKSJAFRB6DPQTPGEFCS3LAD7HD5MHVWSOOHGHT2ZGCQA",
       "deliveredAt": 1774136640661,
       "deliveryKind": "instructions",
-      "fields": {
-        "usernameasdasd": "asdasd",
-        "password": "asdasdasd"
-      },
-      "instructions": "asdasasdasd"
+      "encryptedPayload": "v1:i8NeFaBiphz+Wg+9:/1Vh9FOegQqY/JVGF8pTVQ==:2zH4F4N8LuaK8hr8HVlACgWgnjlDhsjPtqoRFAlP91ukE03k43L07ckE9y8F7dP0IpmEgKglMlhpoK/bZhXs6TwWRemWeE9RxMZPT2nx/xlXuYZfNSdauArv"
     }
   }
 }

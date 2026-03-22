@@ -416,10 +416,18 @@ export default function SellPage() {
           </div>
         </article>
 
-        <article className="cyber-card terminal-panel">
-          <div className="section-head">
-            <Truck size={18} />
-            <h3>Deliver Orders</h3>
+        <article
+          className="cyber-card terminal-panel"
+          style={{ gridColumn: "1 / -1" }}
+        >
+          <div
+            className="section-head"
+            style={{ justifyContent: "space-between", flexWrap: "nowrap" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Truck size={18} />
+              <h3>Deliver Orders</h3>
+            </div>
             <button
               className="btn-outline"
               type="button"
@@ -434,8 +442,18 @@ export default function SellPage() {
 
           <div className="list-stack">
             {myOrders.map((o) => (
-              <div key={o.orderTxId} className="list-item">
-                <div style={{ flex: 1 }}>
+              <div
+                key={o.orderTxId}
+                className="list-item"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "nowrap",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ margin: 0 }}>{o.service}</p>
                   <span>
                     {o.type} • {o.price} ALGO • Buyer{" "}
@@ -454,6 +472,7 @@ export default function SellPage() {
                 <Link
                   className="btn-outline"
                   href={`/sell/delivery/${encodeURIComponent(o.orderTxId)}`}
+                  style={{ whiteSpace: "nowrap", flexShrink: 0 }}
                 >
                   Open Delivery
                 </Link>
