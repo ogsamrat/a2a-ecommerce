@@ -10,6 +10,7 @@ import {
   getRememberedListings,
   rememberListings,
 } from "@/lib/listings/registry";
+import { getListingRating } from "@/lib/feedback/ledger";
 
 function getQueryTimeoutMs(network: NetworkMode): number {
   const raw = process.env.INDEXER_QUERY_TIMEOUT_MS;
@@ -269,6 +270,12 @@ export async function GET(req: NextRequest) {
           description: data.description,
           timestamp: data.timestamp ?? 0,
           zkCommitment: data.zkCommitment,
+          deliveryKind: data.deliveryKind,
+          accessDurationDays:
+            data.accessDurationDays !== undefined &&
+            Number.isFinite(Number(data.accessDurationDays))
+              ? Number(data.accessDurationDays)
+              : undefined,
           round: Number(txn.confirmedRound ?? 0),
         };
 
@@ -276,7 +283,12 @@ export async function GET(req: NextRequest) {
           continue;
         if (listing.price > maxBudget) continue;
 
-        listings.push(listing);
+        const rating = await getListingRating(listing.txId);
+        listings.push({
+          ...listing,
+          productReputation: rating.score,
+          productReviewCount: rating.count,
+        });
       } catch {
         // skip malformed
       }

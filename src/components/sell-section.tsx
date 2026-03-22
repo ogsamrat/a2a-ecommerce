@@ -1,734 +1,324 @@
-"use client";
-
-import { useState } from "react";
-import { useWallet } from "@txnlab/use-wallet-react";
+import { NextRequest, NextResponse } from "next/server";
+import algosdk from "algosdk";
 import {
-  Package,
-  Tag,
-  FileText,
-  Coins,
-  Plus,
-  CheckCircle,
-  AlertCircle,
-  RefreshCw,
-  ExternalLink,
-  Shield,
-  Layers,
-  Cpu,
-  Globe,
-  Database,
-} from "lucide-react";
+  getIndexer,
+  getNetworkMode,
+  type NetworkMode,
+} from "@/lib/blockchain/algorand";
+import type { OnChainListing } from "@/lib/agents/types";
+import {
+  getRememberedListings,
+  rememberListings,
+} from "@/lib/listings/registry";
 
-const TYPES = [
-  { value: "cloud-storage", label: "Cloud Storage", icon: Database },
-  { value: "api-access", label: "API Access", icon: Layers },
-  { value: "compute", label: "Compute", icon: Cpu },
-  { value: "hosting", label: "Hosting", icon: Globe },
-] as const;
-type SvcType = (typeof TYPES)[number]["value"];
-
-interface Form {
-  type: SvcType | "";
-  service: string;
-  price: string;
-  description: string;
-}
-interface Listing {
-  txId: string;
-  type: string;
-  service: string;
-  price: number;
-  description: string;
-  zkCommitment?: string;
-}
-interface Status {
-  kind: "success" | "error" | "info";
-  text: string;
-  txId?: string;
-  explorerUrl?: string;
+function getQueryTimeoutMs(network: NetworkMode): number {
+  const raw = process.env.INDEXER_QUERY_TIMEOUT_MS;
+  const parsed = Number(raw ?? "");
+  if (Number.isFinite(parsed) && parsed >= 1000) return Math.floor(parsed);
+  return network === "testnet" ? 9000 : 2500;
 }
 
-const TYPE_BADGE: Record<string, string> = {
-  "cloud-storage": "type-cloud",
-  "api-access": "type-api",
-  compute: "type-compute",
-  hosting: "type-hosting",
-};
-const TYPE_LABEL: Record<string, string> = {
-  "cloud-storage": "Cloud Storage",
-  "api-access": "API Access",
-  compute: "Compute",
-  hosting: "Hosting",
-};
+function normalizeType(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+}
 
-export function SellSection() {
-  const { activeAccount, signTransactions } = useWallet();
-  const [form, setForm] = useState<Form>({
-    type: "",
-    service: "",
-    price: "",
-    description: "",
-  });
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loadingL, setLoadingL] = useState(false);
-  const [zkSecret, setZkSecret] = useState<string | null>(null);
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error("query timeout")), timeoutMs);
+    }),
+  ]);
+}
 
-  async function refresh() {
-    if (!activeAccount) return;
-    setLoadingL(true);
-    try {
-      const d = await (
-        await fetch(
-          `/api/listings/fetch?seller=${encodeURIComponent(activeAccount.address)}`,
-        )
-      ).json();
-      setListings(d.listings ?? []);
-    } finally {
-      setLoadingL(false);
-    }
+async function withTimeoutRetry<T>(
+  queryFactory: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  try {
+    return await withTimeout(queryFactory(), timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (!message.includes("timeout")) throw error;
+
+    const retryTimeoutMs = Math.min(timeoutMs * 2, 20000);
+    return await withTimeout(queryFactory(), retryTimeoutMs);
   }
+}
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.type || !form.service.trim() || !form.price || !form.description.trim())
-      return;
-    setBusy(true);
-    setStatus({ kind: "info", text: "Preparing listing transaction…" });
-    try {
-      const sender = activeAccount?.address ?? "DEMO_ADDRESS";
-      const d = await (
-        await fetch("/api/listings/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            senderAddress: sender,
-            type: form.type,
-            service: form.service.trim(),
-            price: parseFloat(form.price),
-            description: form.description.trim(),
-          }),
-        })
-      ).json();
-      if (d.error) throw new Error(d.error);
-      if (d.zkSecret) setZkSecret(d.zkSecret);
+async function isLocalIndexerReachable(): Promise<boolean> {
+  try {
+    const res = await fetch("http://localhost:8980/health", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1200),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
-      if (activeAccount && d.unsignedTxn) {
-        setStatus({ kind: "info", text: "Waiting for wallet signature…" });
-        const bytes = Uint8Array.from(atob(d.unsignedTxn), (c) =>
-          c.charCodeAt(0),
-        );
-        const signed = (await signTransactions([bytes]))[0];
-        if (!signed) throw new Error("Empty signature");
-        const b64 = btoa(String.fromCharCode(...Array.from(signed)));
-        setStatus({ kind: "info", text: "Submitting to Algorand…" });
-        const sub = await (
-          await fetch("/api/wallet/submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ signedTxn: b64 }),
-          })
-        ).json();
-        if (sub.error) throw new Error(sub.error);
-        setStatus({
-          kind: "success",
-          text: "Listing confirmed on-chain!",
-          txId: sub.txId,
-          explorerUrl: sub.explorerUrl,
-        });
-      } else {
-        setStatus({
-          kind: "success",
-          text: "Unsigned txn prepared. Connect wallet to sign.",
-          txId: d.txnId,
+function filterLocalListings(
+  listings: OnChainListing[],
+  serviceType: string | undefined,
+  maxBudget: number,
+  sellerAddress: string | undefined,
+): OnChainListing[] {
+  return listings.filter((listing) => {
+    if (sellerAddress && listing.seller !== sellerAddress) return false;
+    if (
+      serviceType &&
+      normalizeType(String(listing.type ?? "unknown")) !== serviceType
+    ) {
+      return false;
+    }
+    return Number(listing.price) <= maxBudget;
+  });
+}
+
+function mergeListings(
+  primary: OnChainListing[],
+  fallback: OnChainListing[],
+): OnChainListing[] {
+  const byId = new Map<string, OnChainListing>();
+  for (const item of fallback) {
+    if (!item.txId) continue;
+    byId.set(item.txId, item);
+  }
+  for (const item of primary) {
+    if (!item.txId) continue;
+    byId.set(item.txId, item);
+  }
+  return [...byId.values()].sort((a, b) => {
+    if (b.round !== a.round) return b.round - a.round;
+    return b.timestamp - a.timestamp;
+  });
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const rawType = req.nextUrl.searchParams.get("type") ?? "";
+    const serviceType = rawType ? normalizeType(rawType) : undefined;
+    const maxBudgetRaw = req.nextUrl.searchParams.get("maxBudget") ?? "999999";
+    const maxBudget = Number(maxBudgetRaw);
+    const sellerAddress = req.nextUrl.searchParams.get("seller") ?? undefined;
+
+    if (!Number.isFinite(maxBudget) || maxBudget < 0) {
+      return NextResponse.json(
+        { error: "maxBudget must be a positive number" },
+        { status: 400 },
+      );
+    }
+
+    const network = getNetworkMode();
+    const queryTimeoutMs = getQueryTimeoutMs(network);
+    const remembered = await getRememberedListings();
+    const rememberedFiltered = filterLocalListings(
+      remembered,
+      serviceType,
+      maxBudget,
+      sellerAddress,
+    );
+
+    if (network === "localnet") {
+      const reachable = await isLocalIndexerReachable();
+      if (!reachable) {
+        return NextResponse.json({
+          listings: rememberedFiltered,
+          count: rememberedFiltered.length,
+          network,
+          source: "memory",
+          warning:
+            "Local indexer is not reachable on http://localhost:8980. Showing remembered listings only.",
         });
       }
-      setForm((f) => ({ ...f, service: "", price: "", description: "" }));
-      await refresh();
-    } catch (e) {
-      setStatus({
-        kind: "error",
-        text: e instanceof Error ? e.message : "Unknown error",
-      });
-    } finally {
-      setBusy(false);
     }
+
+    const indexer = getIndexer();
+
+    const listings: OnChainListing[] = [];
+    const notePrefix = Buffer.from("a2a-listing:").toString("base64");
+    const searchAddresses = sellerAddress ? [sellerAddress] : [];
+
+    const allTxns: Array<{
+      id?: string;
+      sender?: string;
+      note?: unknown;
+      confirmedRound?: number | bigint;
+    }> = [];
+
+    if (searchAddresses.length > 0) {
+      let hadAddressQueryTimeout = false;
+      for (const address of searchAddresses) {
+        try {
+          const searchResult = await withTimeoutRetry(
+            () =>
+              indexer
+                .searchForTransactions()
+                .address(address)
+                .notePrefix(notePrefix)
+                .txType("pay")
+                .limit(100)
+                .do(),
+            queryTimeoutMs,
+          );
+          allTxns.push(...(searchResult.transactions ?? []));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message.toLowerCase() : "";
+          if (message.includes("timeout")) {
+            hadAddressQueryTimeout = true;
+          }
+          // skip noisy address query failures and continue with remaining addresses
+        }
+      }
+
+      if (!allTxns.length && hadAddressQueryTimeout) {
+        const merged = mergeListings([], rememberedFiltered);
+        return NextResponse.json({
+          listings: merged,
+          count: merged.length,
+          network,
+          source: "memory",
+          warning:
+            "Indexer query timed out while loading seller listings; showing remembered listings.",
+        });
+      }
+    } else {
+      try {
+        let currentRound = 0;
+        try {
+          const health = await withTimeoutRetry(
+            () => indexer.makeHealthCheck().do(),
+            2000,
+          );
+          currentRound = Number(health.round ?? 0);
+        } catch {}
+
+        const searchResult = await withTimeoutRetry(() => {
+          let req = indexer
+            .searchForTransactions()
+            .notePrefix(notePrefix)
+            .txType("pay")
+            .limit(250);
+          if (currentRound > 0)
+            req = req.minRound(Math.max(0, currentRound - 500000));
+          return req.do();
+        }, queryTimeoutMs);
+        allTxns.push(...(searchResult.transactions ?? []));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message.toLowerCase() : "";
+        if (
+          message.includes("statement timeout") ||
+          message.includes("searching for transaction") ||
+          message.includes("timeout")
+        ) {
+          const merged = mergeListings([], rememberedFiltered);
+          return NextResponse.json({
+            listings: merged,
+            count: merged.length,
+            network,
+            source: "memory",
+            warning: "Indexer query timed out; showing remembered listings.",
+          });
+        }
+        throw error;
+      }
+    }
+
+    const seen = new Set<string>();
+    const txns = allTxns.filter((txn) => {
+      const id = txn.id ?? "";
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    for (const txn of txns) {
+      try {
+        const noteRaw = txn.note;
+        if (!noteRaw) continue;
+        const noteStr =
+          typeof noteRaw === "string"
+            ? Buffer.from(noteRaw, "base64").toString("utf-8")
+            : new TextDecoder().decode(noteRaw as Uint8Array);
+
+        if (!noteStr.startsWith("a2a-listing:")) continue;
+        const data = JSON.parse(noteStr.slice("a2a-listing:".length));
+
+        try {
+          algosdk.Address.fromString(String(data.seller));
+        } catch {
+          continue;
+        }
+
+        const listing: OnChainListing = {
+          txId: txn.id ?? "",
+          sender: txn.sender ?? "",
+          type: data.type,
+          service: data.service,
+          price: data.price,
+          seller: data.seller,
+          description: data.description,
+          timestamp: data.timestamp ?? 0,
+          zkCommitment: data.zkCommitment,
+          round: Number(txn.confirmedRound ?? 0),
+        };
+
+        if (serviceType && normalizeType(String(listing.type)) !== serviceType)
+          continue;
+        if (listing.price > maxBudget) continue;
+
+        listings.push(listing);
+      } catch {
+        // skip malformed
+      }
+    }
+
+    await rememberListings(listings);
+    const merged = mergeListings(listings, rememberedFiltered);
+
+    return NextResponse.json({
+      listings: merged,
+      count: merged.length,
+      network,
+      source: "onchain+memory",
+    });
+  } catch (error) {
+    const network = getNetworkMode();
+    const fallbackTypeRaw = req.nextUrl.searchParams.get("type") ?? "";
+    const fallbackServiceType = fallbackTypeRaw
+      ? normalizeType(fallbackTypeRaw)
+      : undefined;
+    const fallbackMaxBudgetRaw = req.nextUrl.searchParams.get("maxBudget");
+    const fallbackMaxBudget = Number(fallbackMaxBudgetRaw ?? "999999");
+    const safeMaxBudget =
+      Number.isFinite(fallbackMaxBudget) && fallbackMaxBudget >= 0
+        ? fallbackMaxBudget
+        : Number.MAX_SAFE_INTEGER;
+    const fallbackSeller = req.nextUrl.searchParams.get("seller") ?? undefined;
+    const remembered = await getRememberedListings();
+    const filtered = filterLocalListings(
+      remembered,
+      fallbackServiceType,
+      safeMaxBudget,
+      fallbackSeller,
+    );
+    const msg =
+      error instanceof Error ? error.message : "Failed to fetch listings";
+    return NextResponse.json({
+      listings: filtered,
+      count: filtered.length,
+      network,
+      source: "memory",
+      warning: `Listing fetch degraded: ${msg}`,
+    });
   }
-
-  const selType = TYPES.find((t) => t.value === form.type);
-
-  return (
-    <div className="scroll" style={{ flex: 1 }}>
-      <div
-        style={{
-          maxWidth: 900,
-          margin: "0 auto",
-          padding: "28px 24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 28,
-        }}
-      >
-        {/* Header */}
-        <div className="anim-fade-up">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 6,
-            }}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "var(--radius-sm)",
-                background: "var(--blue-glow)",
-                border: "1px solid var(--blue-border)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Package size={16} color="var(--blue-bright)" />
-            </div>
-            <h1
-              style={{
-                fontSize: "1.125rem",
-                fontWeight: 700,
-                color: "var(--text-1)",
-              }}
-            >
-              List Your Product
-            </h1>
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-3)" }}>
-            Create an on-chain listing discoverable by AI buyer agents.
-          </p>
-        </div>
-
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20 }}
-        >
-          {/* ── Form ── */}
-          <div
-            className="anim-fade-up surface"
-            style={{
-              padding: 20,
-              display: "flex",
-              flexDirection: "column",
-              gap: 18,
-            }}
-          >
-            {/* Type */}
-            <div>
-              <p
-                className="section-label"
-                style={{ paddingInline: 0, marginBottom: 8 }}
-              >
-                Service Type
-              </p>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 6,
-                }}
-              >
-                {TYPES.map((t) => {
-                  const Icon = t.icon;
-                  const active = form.type === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, type: t.value }))}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "9px 12px",
-                        borderRadius: "var(--radius-sm)",
-                        background: active
-                          ? "var(--blue-glow)"
-                          : "var(--bg-input)",
-                        border: active
-                          ? "1px solid var(--blue-border)"
-                          : "1px solid var(--border)",
-                        color: active ? "var(--blue-bright)" : "var(--text-3)",
-                        fontSize: "0.8rem",
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        fontFamily: "var(--font)",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <Icon size={14} />
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* fields */}
-            {[
-              {
-                label: "Service Name",
-                icon: Tag,
-                key: "service",
-                type: "text",
-                placeholder: `e.g. "Enterprise ${selType ? selType.label : 'Service'} Pro"`,
-              },
-            ].map((f) => (
-              <div key={f.key}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                    marginBottom: 6,
-                  }}
-                >
-                  <f.icon size={12} color="var(--text-4)" />
-                  <p
-                    className="section-label"
-                    style={{ paddingInline: 0, fontSize: "0.65rem" }}
-                  >
-                    {f.label}
-                  </p>
-                </div>
-                <input
-                  className="trae-input"
-                  type={f.type}
-                  placeholder={f.placeholder}
-                  value={(form as unknown as Record<string, string>)[f.key]}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, [f.key]: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-            ))}
-
-            {/* Price */}
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  marginBottom: 6,
-                }}
-              >
-                <Coins size={12} color="var(--text-4)" />
-                <p
-                  className="section-label"
-                  style={{ paddingInline: 0, fontSize: "0.65rem" }}
-                >
-                  Price (ALGO)
-                </p>
-              </div>
-              <div style={{ position: "relative" }}>
-                <input
-                  className="trae-input"
-                  type="number"
-                  placeholder="0.50"
-                  min="0.001"
-                  step="0.001"
-                  value={form.price}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, price: e.target.value }))
-                  }
-                  style={{ paddingRight: 52 }}
-                  required
-                />
-                <span
-                  style={{
-                    position: "absolute",
-                    right: 12,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    fontFamily: "var(--mono)",
-                    fontSize: "0.75rem",
-                    color: "var(--blue-bright)",
-                    fontWeight: 600,
-                  }}
-                >
-                  ALGO
-                </span>
-              </div>
-            </div>
-
-            {/* Description */}
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  marginBottom: 6,
-                }}
-              >
-                <FileText size={12} color="var(--text-4)" />
-                <p
-                  className="section-label"
-                  style={{ paddingInline: 0, fontSize: "0.65rem" }}
-                >
-                  Description
-                </p>
-              </div>
-              <textarea
-                className="trae-input"
-                rows={4}
-                placeholder="Describe your service — AI agents read this during discovery…"
-                value={form.description}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, description: e.target.value }))
-                }
-                style={{ resize: "none" }}
-                required
-              />
-            </div>
-
-            {/* Status */}
-            {status && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  padding: "10px 12px",
-                  borderRadius: "var(--radius-md)",
-                  background:
-                    status.kind === "success"
-                      ? "rgba(46,240,161,0.06)"
-                      : status.kind === "error"
-                        ? "rgba(255,107,107,0.06)"
-                        : "var(--blue-glow)",
-                  border: `1px solid ${status.kind === "success" ? "var(--green-border)" : status.kind === "error" ? "rgba(255,107,107,0.2)" : "var(--blue-border)"}`,
-                }}
-              >
-                {status.kind === "success" ? (
-                  <CheckCircle
-                    size={14}
-                    color="var(--green)"
-                    style={{ flexShrink: 0, marginTop: 1 }}
-                  />
-                ) : status.kind === "error" ? (
-                  <AlertCircle
-                    size={14}
-                    color="#ff6b6b"
-                    style={{ flexShrink: 0, marginTop: 1 }}
-                  />
-                ) : (
-                  <div
-                    className="anim-spin"
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: "50%",
-                      border: "2px solid var(--blue-border)",
-                      borderTopColor: "var(--blue-bright)",
-                      flexShrink: 0,
-                      marginTop: 1,
-                    }}
-                  />
-                )}
-                <div>
-                  <p
-                    style={{
-                      fontSize: "0.8rem",
-                      color:
-                        status.kind === "success"
-                          ? "var(--green)"
-                          : status.kind === "error"
-                            ? "#ff6b6b"
-                            : "var(--blue-bright)",
-                    }}
-                  >
-                    {status.text}
-                  </p>
-                  {status.txId && (
-                    <p
-                      style={{
-                        fontFamily: "var(--mono)",
-                        fontSize: "0.7rem",
-                        color: "var(--text-3)",
-                        marginTop: 3,
-                      }}
-                    >
-                      TX: {status.txId.slice(0, 28)}…
-                    </p>
-                  )}
-                  {status.explorerUrl && (
-                    <a
-                      href={status.explorerUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: "0.7rem",
-                        color: "var(--blue-bright)",
-                        marginTop: 4,
-                        textDecoration: "none",
-                      }}
-                    >
-                      View on Explorer <ExternalLink size={10} />
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <button
-              className="btn-primary"
-              disabled={busy}
-              onClick={handleSubmit as unknown as React.MouseEventHandler}
-              style={{ justifyContent: "center", padding: "0.625rem" }}
-            >
-              {busy ? (
-                <div
-                  className="anim-spin"
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: "50%",
-                    border: "2px solid rgba(255,255,255,0.3)",
-                    borderTopColor: "#fff",
-                  }}
-                />
-              ) : (
-                <Plus size={15} />
-              )}
-              {busy ? "Processing…" : "List on Algorand"}
-            </button>
-
-            {!activeAccount && (
-              <p
-                style={{
-                  textAlign: "center",
-                  fontSize: "0.75rem",
-                  color: "var(--text-4)",
-                }}
-              >
-                Connect wallet to sign and publish on-chain
-              </p>
-            )}
-          </div>
-
-          {/* ── My Listings ── */}
-          <div
-            className="anim-fade-up d-100 surface"
-            style={{
-              padding: 16,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.8rem",
-                  fontWeight: 600,
-                  color: "var(--text-2)",
-                }}
-              >
-                My Listings
-              </span>
-              <button
-                className="btn-ghost"
-                onClick={refresh}
-                disabled={!activeAccount || loadingL}
-                style={{ padding: "4px 8px" }}
-              >
-                <RefreshCw size={12} className={loadingL ? "anim-spin" : ""} />
-              </button>
-            </div>
-
-            {!activeAccount ? (
-              <div
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
-                  paddingBlock: 32,
-                }}
-              >
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "var(--radius-sm)",
-                    background: "var(--bg-input)",
-                    border: "1px solid var(--border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Package size={16} color="var(--text-4)" />
-                </div>
-                <p
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--text-4)",
-                    textAlign: "center",
-                  }}
-                >
-                  Connect wallet to view your listings
-                </p>
-              </div>
-            ) : listings.length === 0 ? (
-              <p
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-4)",
-                  textAlign: "center",
-                  paddingBlock: 24,
-                }}
-              >
-                {loadingL ? "Loading…" : "No listings yet"}
-              </p>
-            ) : (
-              <div
-                className="scroll"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                  flex: 1,
-                }}
-              >
-                {listings.map((l) => (
-                  <div
-                    key={l.txId}
-                    style={{
-                      background: "var(--bg-input)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-md)",
-                      padding: "10px 12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <p
-                        style={{
-                          fontSize: "0.8rem",
-                          fontWeight: 600,
-                          color: "var(--text-1)",
-                          flex: 1,
-                          minWidth: 0,
-                        }}
-                      >
-                        {l.service}
-                      </p>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: "0.8rem",
-                          fontWeight: 600,
-                          color: "var(--blue-bright)",
-                          flexShrink: 0,
-                          marginLeft: 8,
-                        }}
-                      >
-                        {l.price}{" "}
-                        <span
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "var(--text-3)",
-                          }}
-                        >
-                          ALGO
-                        </span>
-                      </span>
-                    </div>
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      <span
-                        className={`badge ${TYPE_BADGE[l.type] ?? "badge-white"}`}
-                      >
-                        {TYPE_LABEL[l.type] ?? l.type}
-                      </span>
-                      {l.zkCommitment && (
-                        <span
-                          className="badge badge-blue"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                        >
-                          <Shield size={9} /> ZK
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {zkSecret && (
-              <div
-                style={{
-                  background: "rgba(255,107,107,0.06)",
-                  border: "1px solid rgba(255,107,107,0.2)",
-                  borderRadius: "var(--radius-md)",
-                  padding: "10px 12px",
-                  flexShrink: 0,
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: "0.65rem",
-                    fontWeight: 600,
-                    color: "#ff6b6b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    marginBottom: 4,
-                  }}
-                >
-                  ZK Secret — Save This!
-                </p>
-                <p
-                  style={{
-                    fontFamily: "var(--mono)",
-                    fontSize: "0.65rem",
-                    color: "var(--text-3)",
-                    wordBreak: "break-all",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {zkSecret}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }

@@ -8,7 +8,6 @@ import { TransactionStatus } from "@/components/transaction-status";
 import { ListingCard } from "@/components/seller-card";
 import {
   Send,
-  Sparkles,
   Bot,
   Zap,
   X,
@@ -57,6 +56,20 @@ const PHASE_LABEL: Record<string, { text: string; color: string }> = {
   error: { text: "Error", color: "#ff6b6b" },
 };
 
+interface VaultPolicyView {
+  maxPerOrderAlgo: number;
+  dailyCapAlgo: number;
+  allowedSellers: string[];
+  allowedServices: string[];
+  expiresAt?: string;
+}
+
+interface VaultAccountView {
+  buyerAddress: string;
+  balanceAlgo: number;
+  policy: VaultPolicyView;
+}
+
 export function ChatSection() {
   const { activeAccount, signTransactions } = useWallet();
   const [mounted, setMounted] = useState(false);
@@ -67,10 +80,62 @@ export function ChatSection() {
   const [loading, setLoading] = useState(false);
   const [inited, setInited] = useState(false);
   const [msg, setMsg] = useState("");
+  const [vault, setVault] = useState<VaultAccountView | null>(null);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [funding, setFunding] = useState(false);
+  const [depositAmount, setDepositAmount] = useState("1");
+  const [policySaving, setPolicySaving] = useState(false);
+  const [maxPerOrder, setMaxPerOrder] = useState("1");
+  const [dailyCap, setDailyCap] = useState("5");
+  const [allowedSellersText, setAllowedSellersText] = useState("");
+  const [allowedServicesText, setAllowedServicesText] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const refreshVault = useCallback(async () => {
+    if (!currentAccount?.address) {
+      setVault(null);
+      return;
+    }
+
+    setVaultLoading(true);
+    try {
+      const r = await fetch(
+        `/api/vault/status?buyerAddress=${encodeURIComponent(currentAccount.address)}`,
+      );
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setVault(d.account ?? null);
+      if (d.account?.policy) {
+        setMaxPerOrder(String(d.account.policy.maxPerOrderAlgo ?? 1));
+        setDailyCap(String(d.account.policy.dailyCapAlgo ?? 5));
+        setAllowedSellersText(
+          (d.account.policy.allowedSellers ?? []).join(","),
+        );
+        setAllowedServicesText(
+          (d.account.policy.allowedServices ?? []).join(","),
+        );
+        const rawExpiry = d.account.policy.expiresAt;
+        setExpiresAt(
+          rawExpiry ? new Date(rawExpiry).toISOString().slice(0, 16) : "",
+        );
+      }
+    } catch (e) {
+      sysAction(
+        `**Vault Status Error:** ${e instanceof Error ? e.message : "Failed"}`,
+        "result",
+      );
+    } finally {
+      setVaultLoading(false);
+    }
+  }, [currentAccount?.address]);
+
+  useEffect(() => {
+    void refreshVault();
+  }, [refreshVault]);
 
   /* ── Helpers ── */
   const addActions = useCallback(
@@ -230,13 +295,43 @@ export function ChatSection() {
   async function execDeal(deal: NegotiationSession, isAutoBuy = false) {
     setLoading(true);
     setState((p) => ({ ...p, phase: "executing" }));
-    if (!isAutoBuy && currentAccount) await execWallet(deal);
-    else await execServer(deal);
-    setState((p) => ({ ...p, phase: "completed" }));
+    let success = false;
+    if (isAutoBuy) {
+      if (!currentAccount?.address) {
+        sysAction(
+          "**Auto-Buy requires a connected wallet** to identify and charge your buyer vault.",
+          "result",
+        );
+        setState((p) => ({ ...p, phase: "error" }));
+        setLoading(false);
+        return;
+      }
+      sysAction(
+        "Auto-Buy is ON: executing payment via autonomous agent signer…",
+        "transaction",
+      );
+      success = await execServer(deal, true);
+    } else if (currentAccount) {
+      success = await execWallet(deal);
+    } else {
+      sysAction(
+        "**Wallet required:** connect a wallet for manual purchases, or enable Auto-Buy with funded vault.",
+        "result",
+      );
+      setState((p) => ({ ...p, phase: "error" }));
+      setLoading(false);
+      return;
+    }
+
+    if (success) {
+      setState((p) => ({ ...p, phase: "completed" }));
+    } else {
+      setState((p) => (p.phase === "error" ? p : { ...p, phase: "error" }));
+    }
     setLoading(false);
   }
 
-  async function execWallet(deal: NegotiationSession) {
+  async function execWallet(deal: NegotiationSession): Promise<boolean> {
     try {
       sysAction(
         `Preparing **${deal.finalPrice} ALGO** payment…`,
@@ -290,21 +385,157 @@ export function ChatSection() {
           timestamp: new Date().toISOString(),
         },
       ]);
+      return true;
     } catch (e) {
       sysAction(
         `**Wallet Error:** ${e instanceof Error ? e.message : "Failed"}`,
         "result",
       );
+      return false;
     }
   }
 
-  async function execServer(deal: NegotiationSession) {
-    const r = await api<{ success: boolean; escrow: EscrowState }>(
+  async function execServer(
+    deal: NegotiationSession,
+    isAutoBuy: boolean,
+  ): Promise<boolean> {
+    const r = await api<{
+      success: boolean;
+      escrow: EscrowState;
+      vault?: VaultAccountView;
+    }>(
       "/api/execute",
-      { deal },
+      {
+        deal,
+        autoBuy: isAutoBuy,
+        buyerAddress: currentAccount?.address,
+      },
       "executing",
     );
-    if (r?.escrow) setState((p) => ({ ...p, escrow: r.escrow }));
+    if (!r?.escrow) {
+      sysAction(
+        isAutoBuy
+          ? "**Auto execution failed.** Fund your buyer vault and ensure policy limits allow this spend."
+          : "**Server execution failed.** Ensure AVM_PRIVATE_KEY is set and funded for settlement.",
+        "result",
+      );
+      return false;
+    }
+
+    setState((p) => ({ ...p, escrow: r.escrow }));
+    if (r.vault) setVault(r.vault);
+    return true;
+  }
+
+  async function fundVault(): Promise<void> {
+    if (!currentAccount?.address || funding) return;
+
+    const amount = Number(depositAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      sysAction(
+        "**Vault Funding Error:** Enter a valid deposit amount.",
+        "result",
+      );
+      return;
+    }
+
+    setFunding(true);
+    try {
+      const prepRes = await fetch("/api/vault/prepare-deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerAddress: currentAccount.address,
+          amountAlgo: amount,
+        }),
+      });
+      const prep = await prepRes.json();
+      if (prep.error) throw new Error(prep.error);
+
+      const bytes = Uint8Array.from(atob(prep.unsignedTxn), (c) =>
+        c.charCodeAt(0),
+      );
+      const signed = (await signTransactions([bytes]))[0];
+      if (!signed) throw new Error("Wallet returned empty signature");
+
+      const b64 = btoa(String.fromCharCode(...Array.from(signed)));
+      const submitRes = await fetch("/api/wallet/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signedTxn: b64 }),
+      });
+      const submit = await submitRes.json();
+      if (submit.error) throw new Error(submit.error);
+
+      const creditRes = await fetch("/api/vault/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerAddress: currentAccount.address,
+          txId: submit.txId,
+        }),
+      });
+      const credit = await creditRes.json();
+      if (credit.error) throw new Error(credit.error);
+
+      setVault(credit.account ?? null);
+      sysAction(
+        `Vault funded: **${credit.amountAlgo} ALGO** (TX: \`${submit.txId}\`)`,
+        "transaction",
+      );
+    } catch (e) {
+      sysAction(
+        `**Vault Funding Error:** ${e instanceof Error ? e.message : "Failed"}`,
+        "result",
+      );
+    } finally {
+      setFunding(false);
+    }
+  }
+
+  async function saveVaultPolicy(): Promise<void> {
+    if (!currentAccount?.address || policySaving) return;
+
+    setPolicySaving(true);
+    try {
+      const sellers = allowedSellersText
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+      const services = allowedServicesText
+        .split(",")
+        .map((v) => v.trim().toLowerCase())
+        .filter(Boolean);
+
+      const r = await fetch("/api/vault/policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerAddress: currentAccount.address,
+          policy: {
+            maxPerOrderAlgo: Number(maxPerOrder),
+            dailyCapAlgo: Number(dailyCap),
+            allowedSellers: sellers,
+            allowedServices: services,
+            expiresAt: expiresAt
+              ? new Date(expiresAt).toISOString()
+              : undefined,
+          },
+        }),
+      });
+
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setVault(d.account ?? null);
+      sysAction("Vault policy updated.", "transaction");
+    } catch (e) {
+      sysAction(
+        `**Vault Policy Error:** ${e instanceof Error ? e.message : "Failed"}`,
+        "result",
+      );
+    } finally {
+      setPolicySaving(false);
+    }
   }
 
   const canConfirm =
@@ -394,7 +625,9 @@ export function ChatSection() {
               </p>
               <p style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
                 {state.selectedDeal!.finalPrice} ALGO —{" "}
-                {currentAccount ? "wallet signature required" : "server demo"}
+                {currentAccount
+                  ? "wallet signature required"
+                  : "connect wallet to sign"}
               </p>
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -410,10 +643,11 @@ export function ChatSection() {
               <button
                 className="btn-primary"
                 onClick={() => execDeal(state.selectedDeal!)}
+                disabled={!currentAccount}
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <CheckCircle size={13} />
-                {currentAccount ? "Confirm & Sign" : "Confirm & Pay"}
+                {currentAccount ? "Confirm & Sign" : "Connect Wallet"}
               </button>
             </div>
           </div>
@@ -563,7 +797,7 @@ export function ChatSection() {
           <p
             style={{ fontSize: "0.7rem", color: "var(--text-4)", marginTop: 4 }}
           >
-            Agent executes the best deal automatically
+            Agent executes automatically from your funded buyer vault
           </p>
         </div>
 
@@ -612,6 +846,121 @@ export function ChatSection() {
               >
                 {currentAccount.address}
               </p>
+            </div>
+          )}
+
+          {currentAccount && (
+            <div
+              style={{
+                background: "var(--bg-card)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  color: "var(--text-2)",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Buyer Vault
+              </p>
+              <p style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>
+                {vaultLoading
+                  ? "Loading vault..."
+                  : `Balance: ${vault?.balanceAlgo?.toFixed(6) ?? "0.000000"} ALGO`}
+              </p>
+
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  className="trae-input"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  placeholder="Deposit ALGO"
+                  style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
+                />
+                <button
+                  className="btn-secondary"
+                  onClick={() => fundVault()}
+                  disabled={funding || vaultLoading}
+                  style={{ padding: "0.35rem 0.55rem", fontSize: "0.72rem" }}
+                >
+                  {funding ? "Funding..." : "Fund"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                }}
+              >
+                <input
+                  className="trae-input"
+                  value={maxPerOrder}
+                  onChange={(e) => setMaxPerOrder(e.target.value)}
+                  placeholder="Max/order"
+                  style={{ fontSize: "0.72rem" }}
+                />
+                <input
+                  className="trae-input"
+                  value={dailyCap}
+                  onChange={(e) => setDailyCap(e.target.value)}
+                  placeholder="Daily cap"
+                  style={{ fontSize: "0.72rem" }}
+                />
+              </div>
+
+              <input
+                className="trae-input"
+                value={allowedSellersText}
+                onChange={(e) => setAllowedSellersText(e.target.value)}
+                placeholder="Allow sellers (comma-separated addresses)"
+                style={{ fontSize: "0.72rem" }}
+              />
+
+              <input
+                className="trae-input"
+                value={allowedServicesText}
+                onChange={(e) => setAllowedServicesText(e.target.value)}
+                placeholder="Allow services (comma-separated names)"
+                style={{ fontSize: "0.72rem" }}
+              />
+
+              <input
+                className="trae-input"
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                style={{ fontSize: "0.72rem" }}
+              />
+
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btn-secondary"
+                  onClick={() => saveVaultPolicy()}
+                  disabled={policySaving || vaultLoading}
+                  style={{ padding: "0.35rem 0.55rem", fontSize: "0.72rem" }}
+                >
+                  {policySaving ? "Saving..." : "Save Policy"}
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => refreshVault()}
+                  disabled={vaultLoading}
+                  style={{ padding: "0.35rem 0.55rem", fontSize: "0.72rem" }}
+                >
+                  Refresh
+                </button>
+              </div>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { initAccounts, getNetworkMode } from "@/lib/blockchain/algorand";
+import { initAccount, getNetworkMode } from "@/lib/blockchain/algorand";
 import { createAction } from "@/lib/a2a/messaging";
 
 function isRecoverableInitError(message: string): boolean {
@@ -25,44 +25,15 @@ export async function POST() {
     const networkLabel =
       network === "testnet" ? "Algorand TestNet" : "Algorand LocalNet";
 
-    const actions = [
-      createAction(
-        "system",
-        "Algorand",
-        "transaction",
-        `Connecting to ${networkLabel}...`,
-      ),
-    ];
-
-    const accounts = await initAccounts();
-    actions.push(
-      createAction(
-        "system",
-        "Algorand",
-        "transaction",
-        `Accounts created on ${networkLabel}:\n` +
-          `• **Buyer:** \`${accounts.buyer.address.slice(0, 12)}...${accounts.buyer.address.slice(-6)}\` (${accounts.buyer.balance.toFixed(2)} ALGO)\n` +
-          `• **Sellers:** ${Object.keys(accounts.sellers).length} accounts funded`,
-        { accounts },
-      ),
-    );
+    const accounts = await initAccount();
 
     const listingTxIds: string[] = [];
-    actions.push(
-      createAction(
-        "system",
-        "Algorand",
-        "result",
-        "Initialization complete. No seeded listings are created. Marketplace and chat will use only user-created on-chain listings.",
-        { listingTxIds },
-      ),
-    );
 
     return NextResponse.json({
       success: true,
-      accounts,
+      account: accounts.primary,
       listingTxIds,
-      actions,
+      actions: [],
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Init failed";
@@ -70,15 +41,7 @@ export async function POST() {
       return NextResponse.json({
         success: false,
         listingTxIds: [],
-        actions: [
-          createAction(
-            "system",
-            "Algorand",
-            "result",
-            `Initialization warning: ${msg}. No seeded or fallback listings are used.`,
-            { warning: msg },
-          ),
-        ],
+        actions: [],
         warning: msg,
       });
     }

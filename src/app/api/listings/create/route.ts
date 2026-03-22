@@ -12,10 +12,42 @@ function normalizeType(value: unknown): string {
     .replace(/[\s_]+/g, "-");
 }
 
+function normalizeDeliveryKind(
+  value: unknown,
+):
+  | "credentials"
+  | "api_key"
+  | "instructions"
+  | "invite_link"
+  | "provisioned"
+  | "other"
+  | undefined {
+  if (typeof value !== "string") return undefined;
+  const raw = value.trim().toLowerCase();
+  if (
+    raw === "credentials" ||
+    raw === "api_key" ||
+    raw === "instructions" ||
+    raw === "invite_link" ||
+    raw === "provisioned" ||
+    raw === "other"
+  ) {
+    return raw;
+  }
+  return undefined;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { senderAddress, type, service, price, description } =
-      await req.json();
+    const {
+      senderAddress,
+      type,
+      service,
+      price,
+      description,
+      deliveryKind,
+      accessDurationDays,
+    } = await req.json();
 
     const parsedPrice = Number(price);
     const normalizedType = normalizeType(type);
@@ -59,6 +91,13 @@ export async function POST(req: NextRequest) {
       description: description ?? "",
       timestamp: Date.now(),
       zkCommitment: commitment,
+      deliveryKind: normalizeDeliveryKind(deliveryKind),
+      accessDurationDays:
+        accessDurationDays !== undefined &&
+        Number.isFinite(Number(accessDurationDays)) &&
+        Number(accessDurationDays) >= 0
+          ? Number(accessDurationDays)
+          : undefined,
     };
     const noteStr = "a2a-listing:" + JSON.stringify(noteData);
 
@@ -88,6 +127,8 @@ export async function POST(req: NextRequest) {
       description: String(description ?? ""),
       timestamp: Number(noteData.timestamp ?? Date.now()),
       zkCommitment: commitment,
+      deliveryKind: noteData.deliveryKind,
+      accessDurationDays: noteData.accessDurationDays,
       round: 0,
     });
 

@@ -12,6 +12,8 @@ interface ListingData {
   description: string;
   timestamp: number;
   zkCommitment?: string;
+  deliveryKind?: string;
+  accessDurationDays?: number;
 }
 
 const QUERY_TIMEOUT_MS = parseInt(
@@ -99,6 +101,12 @@ export async function fetchListingsFromChain(): Promise<OnChainListing[]> {
         description: data.description,
         timestamp: data.timestamp,
         zkCommitment: data.zkCommitment,
+        deliveryKind: data.deliveryKind as OnChainListing["deliveryKind"],
+        accessDurationDays:
+          data.accessDurationDays !== undefined &&
+          Number.isFinite(Number(data.accessDurationDays))
+            ? Number(data.accessDurationDays)
+            : undefined,
         round: Number(txn.confirmedRound ?? 0),
       });
     } catch {

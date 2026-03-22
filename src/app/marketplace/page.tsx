@@ -1,9 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { useWallet } from "@txnlab/use-wallet-react";
+import { AlertTriangle, CheckCircle2, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { apiRequest, resetApiState } from "@/lib/api/client";
+import {
+  apiRequest,
+  decodeTxnB64,
+  encodeTxnB64,
+  resetApiState,
+} from "@/lib/api/client";
 import type { OnChainListing } from "@/lib/agents/types";
 
 function asError(error: unknown): string {
@@ -16,10 +22,14 @@ function shortAddress(address: string): string {
 }
 
 export default function MarketplacePage() {
+  const { activeAccount, signTransactions } = useWallet();
   const [listings, setListings] = useState<OnChainListing[]>([]);
   const [selectedItem, setSelectedItem] = useState<OnChainListing | null>(null);
-  const [reputationByAgent, setReputationByAgent] = useState<
-    Record<string, number>
+  const [sellerRatings, setSellerRatings] = useState<
+    Record<string, { score: number; count: number }>
+  >({});
+  const [listingRatings, setListingRatings] = useState<
+    Record<string, { score: number; count: number }>
   >({});
   const [type, setType] = useState("");
   const [maxBudget, setMaxBudget] = useState("");
@@ -28,32 +38,32 @@ export default function MarketplacePage() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [resetStatus, setResetStatus] = useState("");
+  const [purchaseMsg, setPurchaseMsg] = useState("");
+  const [purchasing, setPurchasing] = useState(false);
 
-  const loadReputations = useCallback(async (items: OnChainListing[]) => {
-    const agents = [
-      ...new Set(items.map((item) => item.seller).filter(Boolean)),
-    ];
-    if (!agents.length) {
-      setReputationByAgent({});
+  const loadRatings = useCallback(async (items: OnChainListing[]) => {
+    const sellers = [...new Set(items.map((i) => i.seller).filter(Boolean))];
+    const listings = [...new Set(items.map((i) => i.txId).filter(Boolean))];
+    if (!sellers.length && !listings.length) {
+      setSellerRatings({});
+      setListingRatings({});
       return;
     }
 
     try {
       const data = await apiRequest<{
-        results?: Array<{ agent: string; reputation: number }>;
-      }>("/api/reputation/batch", {
+        sellers?: Record<string, { score: number; count: number }>;
+        listings?: Record<string, { score: number; count: number }>;
+      }>("/api/ratings/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agents }),
+        body: JSON.stringify({ sellers, listings }),
       });
-
-      const next: Record<string, number> = {};
-      for (const item of data.results ?? []) {
-        next[item.agent] = item.reputation;
-      }
-      setReputationByAgent(next);
+      setSellerRatings(data.sellers ?? {});
+      setListingRatings(data.listings ?? {});
     } catch {
-      setReputationByAgent({});
+      setSellerRatings({});
+      setListingRatings({});
     }
   }, []);
 
@@ -74,15 +84,16 @@ export default function MarketplacePage() {
       const nextListings = data.listings ?? [];
       setListings(nextListings);
       setWarning(data.warning ?? "");
-      await loadReputations(nextListings);
+      await loadRatings(nextListings);
     } catch (err) {
       setError(asError(err));
       setListings([]);
-      setReputationByAgent({});
+      setSellerRatings({});
+      setListingRatings({});
     } finally {
       setLoading(false);
     }
-  }, [loadReputations, maxBudget, type]);
+  }, [loadRatings, maxBudget, type]);
 
   useEffect(() => {
     void fetchListings();
@@ -105,10 +116,58 @@ export default function MarketplacePage() {
     );
   }, [listings, query]);
 
-  function formatReputation(reputation: number | undefined): string {
-    if (reputation === undefined) return "Reputation N/A";
-    const normalized = reputation > 100 ? reputation / 100 : reputation;
-    return `Reputation ${normalized.toFixed(2)}/100`;
+  function formatScore(
+    score: number | undefined,
+    count: number | undefined,
+  ): string {
+    if (!count) return "New";
+    if (score === undefined) return "N/A";
+    return `${score.toFixed(2)}/5 (${count})`;
+  }
+
+  const canBuy = Boolean(activeAccount?.address && selectedItem && !purchasing);
+
+  async function buySelected(): Promise<void> {
+    if (!activeAccount?.address || !selectedItem) return;
+    setPurchasing(true);
+    setPurchaseMsg("");
+    setError("");
+    try {
+      const create = await apiRequest<{
+        unsignedTxn: string;
+        order: { orderTxId: string };
+      }>("/api/orders/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerAddress: activeAccount.address,
+          sellerAddress: selectedItem.seller,
+          listingTxId: selectedItem.txId,
+          type: selectedItem.type,
+          service: selectedItem.service,
+          price: selectedItem.price,
+          description: selectedItem.description,
+          deliveryKind: selectedItem.deliveryKind ?? "other",
+          accessDurationDays: selectedItem.accessDurationDays,
+        }),
+      });
+
+      const unsignedBytes = decodeTxnB64(create.unsignedTxn);
+      const signed = (await signTransactions([unsignedBytes]))[0];
+      if (!signed) throw new Error("Wallet returned empty signature");
+      const signedB64 = encodeTxnB64(signed);
+      const submit = await apiRequest<{ txId: string }>("/api/wallet/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signedTxn: signedB64 }),
+      });
+
+      setPurchaseMsg(`Order created: ${submit.txId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Purchase failed");
+    } finally {
+      setPurchasing(false);
+    }
   }
 
   async function onResetApi() {
@@ -185,7 +244,13 @@ export default function MarketplacePage() {
             >
               <div className="product-top">
                 <span>{item.type}</span>
-                <span>{formatReputation(reputationByAgent[item.seller])}</span>
+                <span>
+                  Seller{" "}
+                  {formatScore(
+                    sellerRatings[item.seller]?.score,
+                    sellerRatings[item.seller]?.count,
+                  )}
+                </span>
               </div>
               <h4>{item.service}</h4>
               <p className="code-tag truncate-1">{shortAddress(item.seller)}</p>
@@ -232,7 +297,18 @@ export default function MarketplacePage() {
             >
               <span>{selectedItem.type}</span>
               <span>
-                {formatReputation(reputationByAgent[selectedItem.seller])}
+                Seller{" "}
+                {formatScore(
+                  sellerRatings[selectedItem.seller]?.score,
+                  sellerRatings[selectedItem.seller]?.count,
+                )}
+              </span>
+              <span>
+                Product{" "}
+                {formatScore(
+                  listingRatings[selectedItem.txId]?.score,
+                  listingRatings[selectedItem.txId]?.count,
+                )}
               </span>
             </div>
             <p className="code-tag" style={{ wordBreak: "break-all" }}>
@@ -255,6 +331,13 @@ export default function MarketplacePage() {
               <strong style={{ color: "var(--accent)" }}>Price:</strong>{" "}
               {selectedItem.price} ALGO
             </p>
+            <p>
+              <strong style={{ color: "var(--accent)" }}>Delivery:</strong>{" "}
+              {selectedItem.deliveryKind ?? "other"}
+              {selectedItem.accessDurationDays !== undefined
+                ? ` • ${selectedItem.accessDurationDays} days`
+                : ""}
+            </p>
             <div style={{ marginTop: "0.5rem" }}>
               <a
                 className="btn-outline"
@@ -266,6 +349,38 @@ export default function MarketplacePage() {
                 View on Explorer
               </a>
             </div>
+
+            <div
+              style={{
+                marginTop: "0.75rem",
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                className="btn-neon"
+                type="button"
+                disabled={!canBuy}
+                onClick={buySelected}
+              >
+                {purchasing ? "Buying..." : "Buy"}
+              </button>
+              {!activeAccount?.address && (
+                <p className="status-muted">Connect wallet to purchase.</p>
+              )}
+            </div>
+
+            {purchaseMsg && (
+              <p className="status-good" style={{ marginTop: "0.75rem" }}>
+                <CheckCircle2 size={14} /> {purchaseMsg} — go to Orders.
+              </p>
+            )}
+            {error && (
+              <p className="status-bad" style={{ marginTop: "0.75rem" }}>
+                <AlertTriangle size={14} /> {error}
+              </p>
+            )}
           </div>
         </div>
       )}

@@ -6,12 +6,19 @@ export async function POST(req: NextRequest) {
   try {
     const { message } = await req.json();
     if (!message || typeof message !== "string") {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Message is required" },
+        { status: 400 },
+      );
     }
 
     const actions = [
-      createAction("user", "You", "message", message),
-      createAction("buyer", "Buyer Agent", "thinking", "Parsing your intent using AI..."),
+      createAction(
+        "buyer",
+        "Buyer Agent",
+        "thinking",
+        "Parsing your intent using AI...",
+      ),
     ];
 
     const intent = await parseIntent(message);
@@ -22,13 +29,14 @@ export async function POST(req: NextRequest) {
         "Buyer Agent",
         "result",
         `Understood! Looking for **${intent.serviceType}** with a budget of **${intent.maxBudget} ALGO**.${intent.preferences.length > 0 ? ` Preferences: ${intent.preferences.join(", ")}` : ""}`,
-        { intent }
-      )
+        { intent },
+      ),
     );
 
     return NextResponse.json({ intent, actions });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to parse intent";
+    const msg =
+      error instanceof Error ? error.message : "Failed to parse intent";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

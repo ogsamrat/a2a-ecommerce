@@ -194,7 +194,8 @@ async function negotiateWithListing(
       accepted,
       messages,
       zkVerified,
-      rounds: messages.length,
+      rounds:
+        messages.length > 0 ? messages[messages.length - 1].payload.round : 0,
       sellerReputation,
     },
     actions,

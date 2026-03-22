@@ -10,6 +10,52 @@ export interface OnChainListing {
   zkCommitment?: string;
   round: number;
   reputationScore?: number;
+  deliveryKind?:
+    | "credentials"
+    | "api_key"
+    | "instructions"
+    | "invite_link"
+    | "provisioned"
+    | "other";
+  accessDurationDays?: number;
+  productReputation?: number;
+  productReviewCount?: number;
+}
+
+export interface OrderRecord {
+  orderTxId: string;
+  listingTxId: string;
+  buyer: string;
+  seller: string;
+  type: string;
+  service: string;
+  price: number;
+  description: string;
+  deliveryKind?: OnChainListing["deliveryKind"];
+  accessDurationDays?: number;
+  createdAt: number;
+  confirmedRound: number;
+}
+
+export interface DeliveryRecord {
+  orderTxId: string;
+  seller: string;
+  deliveredAt: number;
+  deliveryKind: NonNullable<OnChainListing["deliveryKind"]>;
+  fields: Record<string, string>;
+  instructions?: string;
+}
+
+export interface FeedbackSummary {
+  orderTxId: string;
+  listingTxId: string;
+  buyer: string;
+  seller: string;
+  rating: number;
+  comment?: string;
+  createdAt: number;
+  updatedAt: number;
+  isUndone: boolean;
 }
 
 export interface ParsedIntent {

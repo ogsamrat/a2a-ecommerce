@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Bot, LayoutDashboard, Radar, Search, Store } from "lucide-react";
+import {
+  Bot,
+  LayoutDashboard,
+  Radar,
+  Search,
+  Store,
+  Receipt,
+} from "lucide-react";
 
 const WalletConnect = dynamic(
   () => import("@/components/wallet-connect").then((mod) => mod.WalletConnect),
@@ -21,6 +28,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/sell", label: "Sell", icon: Store },
   { href: "/marketplace", label: "Marketplace", icon: Search },
+  { href: "/orders", label: "Orders", icon: Receipt },
   { href: "/chat", label: "Agent Chat", icon: Bot },
   { href: "/observer", label: "Observer", icon: Radar },
 ];

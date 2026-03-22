@@ -38,11 +38,10 @@ interface AccountInfo {
   balance: number;
 }
 
-const TESTNET_MIN_BUYER_BALANCE_ALGO = 3;
+const TESTNET_MIN_BUYER_BALANCE_ALGO = 0.2;
 
 let storedAccounts: {
-  buyerAddr: string;
-  sellerAddrs: Record<string, string>;
+  primaryAddr: string;
 } | null = null;
 
 let escrowState: EscrowState = {
@@ -87,102 +86,49 @@ function getTestnetAccountFromEnv(): ReturnType<
   return { addr, sk };
 }
 
-export async function initAccounts(): Promise<{
-  buyer: AccountInfo;
-  sellers: Record<string, AccountInfo>;
+export async function initAccount(): Promise<{
+  primary: AccountInfo;
 }> {
   if (storedAccounts) {
-    const sellerAccounts: Record<string, AccountInfo> = {};
-    for (const [name, addr] of Object.entries(storedAccounts.sellerAddrs)) {
-      const bal = await getBalance(addr);
-      sellerAccounts[name] = { address: addr, balance: bal };
-    }
-    const buyerBal = await getBalance(storedAccounts.buyerAddr);
+    const primaryBal = await getBalance(storedAccounts.primaryAddr);
     return {
-      buyer: { address: storedAccounts.buyerAddr, balance: buyerBal },
-      sellers: sellerAccounts,
+      primary: { address: storedAccounts.primaryAddr, balance: primaryBal },
     };
   }
 
   const algorand = getClient();
 
-  let buyerAddr: string;
+  let primaryAddr: string;
 
   if (isTestnet()) {
     const account = getTestnetAccountFromEnv();
-    buyerAddr = account.addr.toString();
+    primaryAddr = account.addr.toString();
     algorand.setSignerFromAccount(account);
 
-    const buyerBal = await getBalance(buyerAddr);
-    if (buyerBal < TESTNET_MIN_BUYER_BALANCE_ALGO) {
+    const primaryBal = await getBalance(primaryAddr);
+    if (primaryBal < TESTNET_MIN_BUYER_BALANCE_ALGO) {
       throw new Error(
-        `Insufficient balance in AVM_PRIVATE_KEY account (${buyerBal.toFixed(6)} ALGO). ` +
-          `Fund at least ${TESTNET_MIN_BUYER_BALANCE_ALGO} ALGO on TestNet to initialize sellers.`,
+        `Insufficient balance in AVM_PRIVATE_KEY account (${primaryBal.toFixed(6)} ALGO). ` +
+          `Fund at least ${TESTNET_MIN_BUYER_BALANCE_ALGO} ALGO on TestNet to execute transactions.`,
       );
     }
   } else {
     const dispenser = await algorand.account.localNetDispenser();
-    const buyerAccount = algorand.account.random();
-    algorand.setSignerFromAccount(buyerAccount);
+    const primaryAccount = algorand.account.random();
+    algorand.setSignerFromAccount(primaryAccount);
     await algorand.send.payment({
       sender: dispenser.addr,
-      receiver: buyerAccount.addr,
+      receiver: primaryAccount.addr,
       amount: algo(5000),
     });
-    buyerAddr = buyerAccount.addr.toString();
+    primaryAddr = primaryAccount.addr.toString();
   }
 
-  const sellerNames = [
-    "cloudmax",
-    "datavault",
-    "quickapi",
-    "bharatcompute",
-    "securehost",
-  ];
-  const sellerAccounts: Record<string, AccountInfo> = {};
-  const sellerAddrs: Record<string, string> = {};
-
-  if (isTestnet()) {
-    for (const name of sellerNames) {
-      const sellerAccount = algorand.account.random();
-      algorand.setSignerFromAccount(sellerAccount);
-      await algorand.send.payment({
-        sender: buyerAddr,
-        receiver: sellerAccount.addr,
-        amount: algo(0.5),
-      });
-      const bal = await getBalance(sellerAccount.addr.toString());
-      sellerAccounts[name] = {
-        address: sellerAccount.addr.toString(),
-        balance: bal,
-      };
-      sellerAddrs[name] = sellerAccount.addr.toString();
-    }
-  } else {
-    const dispenser = await algorand.account.localNetDispenser();
-    for (const name of sellerNames) {
-      const sellerAccount = algorand.account.random();
-      algorand.setSignerFromAccount(sellerAccount);
-      await algorand.send.payment({
-        sender: dispenser.addr,
-        receiver: sellerAccount.addr,
-        amount: algo(100),
-      });
-      const bal = await getBalance(sellerAccount.addr.toString());
-      sellerAccounts[name] = {
-        address: sellerAccount.addr.toString(),
-        balance: bal,
-      };
-      sellerAddrs[name] = sellerAccount.addr.toString();
-    }
-  }
-
-  const buyerBal = await getBalance(buyerAddr);
-  storedAccounts = { buyerAddr, sellerAddrs };
+  const primaryBal = await getBalance(primaryAddr);
+  storedAccounts = { primaryAddr };
 
   return {
-    buyer: { address: buyerAddr, balance: buyerBal },
-    sellers: sellerAccounts,
+    primary: { address: primaryAddr, balance: primaryBal },
   };
 }
 
@@ -190,14 +136,37 @@ export function getStoredAccounts() {
   return storedAccounts;
 }
 
+function ensureBuyerAccountForExecution(): string {
+  const algorand = getClient();
+
+  if (storedAccounts?.primaryAddr) {
+    // Ensure the signer is configured on this process before sending.
+    if (isTestnet()) {
+      const account = getTestnetAccountFromEnv();
+      algorand.setSignerFromAccount(account);
+    }
+    return storedAccounts.primaryAddr;
+  }
+
+  if (isTestnet()) {
+    // Recover gracefully when /api/init returned a warning and did not cache accounts.
+    const account = getTestnetAccountFromEnv();
+    algorand.setSignerFromAccount(account);
+    const primaryAddr = account.addr.toString();
+    storedAccounts = { primaryAddr };
+    return primaryAddr;
+  }
+
+  throw new Error("Account not initialized");
+}
+
 export async function executePayment(
   sellerAddress: string,
   amountAlgo: number,
+  note?: string,
 ): Promise<EscrowState> {
   const algorand = getClient();
-  if (!storedAccounts) throw new Error("Accounts not initialized");
-
-  const { buyerAddr } = storedAccounts;
+  const buyerAddr = ensureBuyerAccountForExecution();
   const buyerBal = await getBalance(buyerAddr);
   if (buyerBal < amountAlgo + 0.1) {
     throw new Error(
@@ -209,7 +178,9 @@ export async function executePayment(
     sender: buyerAddr,
     receiver: sellerAddress,
     amount: algo(amountAlgo),
-    note: `AgentDEX Payment | ${amountAlgo} ALGO`,
+    note: note
+      ? String(note).slice(0, 900)
+      : `AgentDEX Payment | ${amountAlgo} ALGO`,
   });
 
   const txId = result.txIds[0];
