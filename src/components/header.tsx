@@ -26,7 +26,7 @@ export function Header({ autoBuy, onToggleAutoBuy, phase }: HeaderProps) {
     <header className="border-b border-zinc-800 bg-[#0d0d14]/80 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-sm">
+          <div className="w-9 h-9 rounded-lg bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-sm">
             A2A
           </div>
           <div>
@@ -59,9 +59,7 @@ export function Header({ autoBuy, onToggleAutoBuy, phase }: HeaderProps) {
           </button>
 
           <div className="px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/20">
-            <span className="text-[10px] text-cyan-400 font-mono">
-              TestNet
-            </span>
+            <span className="text-[10px] text-cyan-400 font-mono">TestNet</span>
           </div>
 
           <WalletConnect />
