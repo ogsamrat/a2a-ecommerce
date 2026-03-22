@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIndexer, getNetworkMode } from "@/lib/blockchain/algorand";
+import { getClient, getIndexer, getNetworkMode } from "@/lib/blockchain/algorand";
 import type { OnChainListing } from "@/lib/agents/types";
 
 export async function GET(req: NextRequest) {
@@ -14,37 +14,80 @@ export async function GET(req: NextRequest) {
     const listings: OnChainListing[] = [];
     const notePrefix = Buffer.from("a2a-listing:").toString("base64");
 
-    let query = indexer.searchForTransactions().notePrefix(notePrefix).txType("pay");
+    // Limit search to recent blocks to avoid indexer SQL timeout on full-history scan
+    let minRound = 0;
+    try {
+      const algod = getClient().client.algod;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const status: any = await algod.status().do();
+      const currentRound = Number(status["last-round"] ?? status.lastRound ?? 0);
+      // Search back ~50 000 rounds ≈ 2 days on TestNet
+      minRound = Math.max(0, currentRound - 50_000);
+    } catch { /* use 0 if algod unavailable */ }
+
+    let query = indexer
+      .searchForTransactions()
+      .notePrefix(notePrefix)
+      .minRound(minRound);
 
     if (sellerAddress) {
       query = query.address(sellerAddress);
     }
 
-    const searchResult = await query.limit(50).do();
-    const txns = searchResult.transactions ?? [];
+    const TIMEOUT_MS = 22000;
+    let timedOut = false;
+    const timeoutSentinel = { transactions: [], _timedOut: true };
 
+    let timerHandle: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<typeof timeoutSentinel>((resolve) => {
+      timerHandle = setTimeout(() => {
+        timedOut = true;
+        resolve(timeoutSentinel);
+      }, TIMEOUT_MS);
+    });
+
+    const searchResult = await Promise.race([
+      query.limit(100).do()
+        .finally(() => clearTimeout(timerHandle))
+        .catch(() => timeoutSentinel),
+      timeoutPromise,
+    ]);
+
+    if (timedOut) {
+      return NextResponse.json(
+        { listings: [], count: 0, network, warning: "Indexer query timed out — TestNet may be slow. Try again shortly." },
+        { status: 200 }
+      );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const txns: any[] = (searchResult as { transactions?: unknown[] }).transactions ?? [];
+
+    const PREFIX = "a2a-listing:";
     for (const txn of txns) {
       try {
         const noteRaw = txn.note;
         if (!noteRaw) continue;
         const noteStr = typeof noteRaw === "string"
           ? Buffer.from(noteRaw, "base64").toString("utf-8")
-          : new TextDecoder().decode(noteRaw as Uint8Array);
+          : noteRaw instanceof Uint8Array
+            ? new TextDecoder().decode(noteRaw)
+            : null;
 
-        if (!noteStr.startsWith("a2a-listing:")) continue;
-        const data = JSON.parse(noteStr.slice("a2a-listing:".length));
+        if (!noteStr || !noteStr.startsWith(PREFIX)) continue;
+        const data = JSON.parse(noteStr.slice(PREFIX.length));
 
         const listing: OnChainListing = {
-          txId: txn.id ?? "",
-          sender: txn.sender ?? "",
-          type: data.type,
-          service: data.service,
-          price: data.price,
-          seller: data.seller,
+          txId:        String(txn.id ?? txn.txId ?? ""),
+          sender:      String(txn.sender ?? txn.from ?? ""),
+          type:        data.type,
+          service:     data.service,
+          price:       data.price,
+          seller:      data.seller,
           description: data.description,
-          timestamp: data.timestamp ?? 0,
+          timestamp:   data.timestamp ?? 0,
           zkCommitment: data.zkCommitment,
-          round: Number(txn.confirmedRound ?? 0),
+          round: Number(txn["confirmed-round"] ?? txn.confirmedRound ?? 0),
         };
 
         if (serviceType && listing.type !== serviceType) continue;
