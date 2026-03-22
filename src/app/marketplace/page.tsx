@@ -171,7 +171,7 @@ export default function MarketplacePage() {
         }),
       });
 
-      setPurchaseMsg(`Order confirmed: ${submit.txId}`);
+      setPurchaseMsg(`Order confirmed & payment held: ${submit.txId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Purchase failed");
     } finally {

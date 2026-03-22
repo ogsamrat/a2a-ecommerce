@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import algosdk from "algosdk";
 import { getIndexer } from "@/lib/blockchain/algorand";
 import { rememberOrder } from "@/lib/orders/registry";
+import { getHeldPayment, holdVaultFunds } from "@/lib/blockchain/vault";
 import type { OnChainListing, OrderRecord } from "@/lib/agents/types";
 
 function decodeNote(noteRaw: unknown): string {
@@ -131,6 +132,29 @@ export async function POST(req: NextRequest) {
       createdAt: parsed.createdAt,
       confirmedRound,
     };
+
+    const existingHold = await getHeldPayment(txId);
+    if (!existingHold) {
+      try {
+        await holdVaultFunds({
+          orderTxId: txId,
+          buyerAddress: parsed.buyer,
+          amountAlgo: parsed.price,
+          sellerAddress: parsed.seller,
+          service: parsed.service,
+        });
+      } catch (e) {
+        return NextResponse.json(
+          {
+            error:
+              e instanceof Error
+                ? `Vault hold failed: ${e.message}`
+                : "Vault hold failed",
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     await rememberOrder(order);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import algosdk from "algosdk";
 import { getClient } from "@/lib/blockchain/algorand";
+import { canSpendFromVault } from "@/lib/blockchain/vault";
 import type { OnChainListing } from "@/lib/agents/types";
 
 type DeliveryKind = NonNullable<OnChainListing["deliveryKind"]>;
@@ -78,6 +79,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const spendCheck = await canSpendFromVault({
+      buyerAddress,
+      amountAlgo: parsedPrice,
+      sellerAddress,
+      service: String(service ?? "Unnamed Service"),
+    });
+    if (!spendCheck.ok) {
+      return NextResponse.json(
+        { error: `Vault policy check failed: ${spendCheck.reason}` },
+        { status: 400 },
+      );
+    }
+
     const orderData = {
       v: 1,
       listingTxId: String(listingTxId),
@@ -106,7 +120,8 @@ export async function POST(req: NextRequest) {
     const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
       sender: algosdk.Address.fromString(buyerAddress),
       receiver: algosdk.Address.fromString(sellerAddress),
-      amount: algosdk.algosToMicroalgos(parsedPrice),
+      // Order marker only; seller payout is released later after delivery.
+      amount: 0,
       note: new TextEncoder().encode(noteStr),
       suggestedParams: params,
     });
