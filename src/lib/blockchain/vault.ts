@@ -18,8 +18,22 @@ export interface VaultAccount {
   updatedAt: string;
 }
 
+export interface VaultHeldPayment {
+  orderTxId: string;
+  buyerAddress: string;
+  sellerAddress: string;
+  service: string;
+  amountAlgo: number;
+  status: "held" | "released" | "refunded";
+  heldAt: string;
+  releasedAt?: string;
+  releaseTxId?: string;
+  releaseConfirmedRound?: number;
+}
+
 interface VaultLedger {
   accounts: Record<string, VaultAccount>;
+  heldPayments: Record<string, VaultHeldPayment>;
 }
 
 const LEDGER_PATH = path.join(
@@ -70,7 +84,7 @@ async function ensureLedgerFile(): Promise<void> {
   try {
     await fs.access(LEDGER_PATH);
   } catch {
-    const initial: VaultLedger = { accounts: {} };
+    const initial: VaultLedger = { accounts: {}, heldPayments: {} };
     await fs.writeFile(LEDGER_PATH, JSON.stringify(initial, null, 2), "utf8");
   }
 }
@@ -80,10 +94,11 @@ async function readLedger(): Promise<VaultLedger> {
   const raw = await fs.readFile(LEDGER_PATH, "utf8");
   try {
     const parsed = JSON.parse(raw) as VaultLedger;
-    if (!parsed.accounts) return { accounts: {} };
+    if (!parsed.accounts) return { accounts: {}, heldPayments: {} };
+    if (!parsed.heldPayments) parsed.heldPayments = {};
     return parsed;
   } catch {
-    return { accounts: {} };
+    return { accounts: {}, heldPayments: {} };
   }
 }
 
@@ -153,6 +168,50 @@ export async function creditVault(
   account.creditedTxIds.push(txId);
   account.updatedAt = new Date().toISOString();
 
+  ledger.accounts[buyerAddress] = account;
+  await writeLedger(ledger);
+  return account;
+}
+
+export async function withdrawVaultBalance(
+  buyerAddress: string,
+  amountAlgo: number,
+): Promise<VaultAccount> {
+  if (!Number.isFinite(amountAlgo) || amountAlgo <= 0) {
+    throw new Error("Vault withdrawal amount must be positive");
+  }
+
+  const ledger = await readLedger();
+  const account =
+    ledger.accounts[buyerAddress] ?? makeDefaultAccount(buyerAddress);
+
+  if (amountAlgo > account.balanceAlgo) {
+    throw new Error(
+      `Vault balance too low (${account.balanceAlgo.toFixed(6)} ALGO)`,
+    );
+  }
+
+  account.balanceAlgo = Number((account.balanceAlgo - amountAlgo).toFixed(6));
+  account.updatedAt = new Date().toISOString();
+  ledger.accounts[buyerAddress] = account;
+  await writeLedger(ledger);
+  return account;
+}
+
+export async function rollbackVaultWithdrawal(
+  buyerAddress: string,
+  amountAlgo: number,
+): Promise<VaultAccount> {
+  if (!Number.isFinite(amountAlgo) || amountAlgo <= 0) {
+    throw new Error("Vault rollback amount must be positive");
+  }
+
+  const ledger = await readLedger();
+  const account =
+    ledger.accounts[buyerAddress] ?? makeDefaultAccount(buyerAddress);
+
+  account.balanceAlgo = Number((account.balanceAlgo + amountAlgo).toFixed(6));
+  account.updatedAt = new Date().toISOString();
   ledger.accounts[buyerAddress] = account;
   await writeLedger(ledger);
   return account;
@@ -272,6 +331,96 @@ export async function debitVault(
   ledger.accounts[input.buyerAddress] = account;
   await writeLedger(ledger);
   return account;
+}
+
+export interface HoldVaultInput extends SpendCheckInput {
+  orderTxId: string;
+}
+
+export async function holdVaultFunds(input: HoldVaultInput): Promise<{
+  account: VaultAccount;
+  heldPayment: VaultHeldPayment;
+}> {
+  if (!input.orderTxId?.trim()) {
+    throw new Error("orderTxId is required to hold vault funds");
+  }
+
+  const check = await canSpendFromVault(input);
+  if (!check.ok) {
+    throw new Error(check.reason ?? "Vault policy rejected spend");
+  }
+
+  const ledger = await readLedger();
+  const existing = ledger.heldPayments[input.orderTxId];
+  if (existing) {
+    if (existing.status === "held") {
+      throw new Error("Vault funds are already held for this order");
+    }
+    throw new Error("Order already finalized in vault hold ledger");
+  }
+
+  const account =
+    ledger.accounts[input.buyerAddress] ??
+    makeDefaultAccount(input.buyerAddress);
+  const day = todayKey();
+  const spentToday = Number(account.usageByDay[day] ?? 0);
+
+  account.balanceAlgo = Number(
+    (account.balanceAlgo - input.amountAlgo).toFixed(6),
+  );
+  account.usageByDay[day] = Number((spentToday + input.amountAlgo).toFixed(6));
+  account.updatedAt = new Date().toISOString();
+
+  const heldPayment: VaultHeldPayment = {
+    orderTxId: input.orderTxId,
+    buyerAddress: input.buyerAddress,
+    sellerAddress: input.sellerAddress,
+    service: input.service,
+    amountAlgo: Number(input.amountAlgo.toFixed(6)),
+    status: "held",
+    heldAt: new Date().toISOString(),
+  };
+
+  ledger.accounts[input.buyerAddress] = account;
+  ledger.heldPayments[input.orderTxId] = heldPayment;
+  await writeLedger(ledger);
+
+  return { account, heldPayment };
+}
+
+export async function getHeldPayment(
+  orderTxId: string,
+): Promise<VaultHeldPayment | null> {
+  if (!orderTxId?.trim()) return null;
+  const ledger = await readLedger();
+  return ledger.heldPayments[orderTxId] ?? null;
+}
+
+export async function markHeldPaymentReleased(input: {
+  orderTxId: string;
+  releaseTxId: string;
+  releaseConfirmedRound: number;
+}): Promise<VaultHeldPayment> {
+  const ledger = await readLedger();
+  const existing = ledger.heldPayments[input.orderTxId];
+  if (!existing) {
+    throw new Error("No held vault payment found for this order");
+  }
+  if (existing.status !== "held") {
+    throw new Error("Vault payment is already finalized");
+  }
+
+  const updated: VaultHeldPayment = {
+    ...existing,
+    status: "released",
+    releaseTxId: input.releaseTxId,
+    releaseConfirmedRound: Number(input.releaseConfirmedRound),
+    releasedAt: new Date().toISOString(),
+  };
+
+  ledger.heldPayments[input.orderTxId] = updated;
+  await writeLedger(ledger);
+  return updated;
 }
 
 export function getVaultDepositNotePrefix(buyerAddress: string): string {

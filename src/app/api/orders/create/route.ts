@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import algosdk from "algosdk";
 import { getClient } from "@/lib/blockchain/algorand";
-import { rememberOrder } from "@/lib/orders/registry";
-import type { OrderRecord, OnChainListing } from "@/lib/agents/types";
+import type { OnChainListing } from "@/lib/agents/types";
 
 type DeliveryKind = NonNullable<OnChainListing["deliveryKind"]>;
 
@@ -116,26 +115,23 @@ export async function POST(req: NextRequest) {
       algosdk.encodeUnsignedTransaction(txn),
     ).toString("base64");
 
-    const record: OrderRecord = {
-      orderTxId: txn.txID(),
-      listingTxId: orderData.listingTxId,
-      buyer: orderData.buyer,
-      seller: orderData.seller,
-      type: orderData.type,
-      service: orderData.service,
-      price: orderData.price,
-      description: orderData.description,
-      deliveryKind: orderData.deliveryKind,
-      accessDurationDays: orderData.accessDurationDays,
-      createdAt: orderData.createdAt,
-      confirmedRound: 0,
-    };
-    await rememberOrder(record);
-
     return NextResponse.json({
       unsignedTxn: unsignedTxnB64,
       txnId: txn.txID(),
-      order: record,
+      order: {
+        orderTxId: txn.txID(),
+        listingTxId: orderData.listingTxId,
+        buyer: orderData.buyer,
+        seller: orderData.seller,
+        type: orderData.type,
+        service: orderData.service,
+        price: orderData.price,
+        description: orderData.description,
+        deliveryKind: orderData.deliveryKind,
+        accessDurationDays: orderData.accessDurationDays,
+        createdAt: orderData.createdAt,
+        confirmedRound: 0,
+      },
     });
   } catch (error) {
     const msg =

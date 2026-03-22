@@ -198,6 +198,44 @@ export async function executePayment(
   return { ...escrowState };
 }
 
+export async function executeAutonomousTransfer(
+  receiverAddress: string,
+  amountAlgo: number,
+  note?: string,
+): Promise<{
+  txId: string;
+  confirmedRound: number;
+  senderAddress: string;
+  receiverAddress: string;
+  amountAlgo: number;
+}> {
+  const algorand = getClient();
+  const senderAddress = ensureBuyerAccountForExecution();
+  const senderBal = await getBalance(senderAddress);
+  if (senderBal < amountAlgo + 0.1) {
+    throw new Error(
+      `Insufficient autonomous balance: ${senderBal.toFixed(2)} ALGO < ${amountAlgo + 0.1} ALGO needed`,
+    );
+  }
+
+  const result = await algorand.send.payment({
+    sender: senderAddress,
+    receiver: receiverAddress,
+    amount: algo(amountAlgo),
+    note: note
+      ? String(note).slice(0, 900)
+      : `A2A Vault Withdrawal | ${amountAlgo} ALGO`,
+  });
+
+  return {
+    txId: result.txIds[0],
+    confirmedRound: Number(result.confirmation.confirmedRound ?? 0n),
+    senderAddress,
+    receiverAddress,
+    amountAlgo,
+  };
+}
+
 export function getEscrowState(): EscrowState {
   return { ...escrowState };
 }

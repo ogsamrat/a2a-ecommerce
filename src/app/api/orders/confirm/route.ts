@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import algosdk from "algosdk";
-import { getIndexer, getNetworkMode } from "@/lib/blockchain/algorand";
-import { getDelivery } from "@/lib/delivery/registry";
-import { getFeedbackForOrder } from "@/lib/feedback/ledger";
-import { getHeldPayment } from "@/lib/blockchain/vault";
+import { getIndexer } from "@/lib/blockchain/algorand";
+import { rememberOrder } from "@/lib/orders/registry";
 import type { OnChainListing, OrderRecord } from "@/lib/agents/types";
 
 function decodeNote(noteRaw: unknown): string {
@@ -40,6 +38,7 @@ function parseOrderNote(
       typeof dataUnknown === "object" && dataUnknown !== null
         ? (dataUnknown as Record<string, unknown>)
         : {};
+
     return {
       listingTxId: String(data.listingTxId ?? ""),
       buyer: String(data.buyer ?? ""),
@@ -61,31 +60,40 @@ function parseOrderNote(
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const orderTxId = req.nextUrl.searchParams.get("orderTxId")?.trim() ?? "";
-    const buyer = req.nextUrl.searchParams.get("buyer")?.trim() ?? "";
-    if (!orderTxId || !buyer) {
+    const { txId, buyerAddress } = (await req.json()) as {
+      txId?: string;
+      buyerAddress?: string;
+    };
+
+    if (!txId || !buyerAddress) {
       return NextResponse.json(
-        { error: "orderTxId and buyer query params required" },
+        { error: "txId and buyerAddress are required" },
         { status: 400 },
       );
     }
 
     try {
-      algosdk.Address.fromString(buyer);
+      algosdk.Address.fromString(buyerAddress);
     } catch {
-      return NextResponse.json({ error: "Invalid buyer" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid buyerAddress" },
+        { status: 400 },
+      );
     }
 
     const indexer = getIndexer();
-    const network = getNetworkMode();
-    const lookup = await indexer.lookupTransactionByID(orderTxId).do();
+    const lookup = await indexer.lookupTransactionByID(txId).do();
     const txn = (
       lookup as {
-        transaction?: { note?: unknown; confirmedRound?: number | bigint };
+        transaction?: {
+          note?: unknown;
+          confirmedRound?: number | bigint;
+        };
       }
     ).transaction;
+
     const noteStr = decodeNote(txn?.note);
     const parsed = parseOrderNote(noteStr);
     if (!parsed) {
@@ -94,15 +102,23 @@ export async function GET(req: NextRequest) {
         { status: 404 },
       );
     }
-    if (parsed.buyer !== buyer) {
+    if (parsed.buyer !== buyerAddress) {
       return NextResponse.json(
-        { error: "Order does not belong to buyer" },
+        { error: "Order buyer does not match buyerAddress" },
         { status: 403 },
       );
     }
 
+    const confirmedRound = Number(txn?.confirmedRound ?? 0);
+    if (confirmedRound <= 0) {
+      return NextResponse.json(
+        { error: "Transaction not confirmed yet" },
+        { status: 409 },
+      );
+    }
+
     const order: OrderRecord = {
-      orderTxId,
+      orderTxId: txId,
       listingTxId: parsed.listingTxId,
       buyer: parsed.buyer,
       seller: parsed.seller,
@@ -113,27 +129,15 @@ export async function GET(req: NextRequest) {
       deliveryKind: parsed.deliveryKind,
       accessDurationDays: parsed.accessDurationDays,
       createdAt: parsed.createdAt,
-      confirmedRound: Number(txn?.confirmedRound ?? 0),
+      confirmedRound,
     };
 
-    const delivery = await getDelivery(orderTxId);
-    const feedback = await getFeedbackForOrder(orderTxId);
-    const held = await getHeldPayment(orderTxId);
+    await rememberOrder(order);
 
-    return NextResponse.json({
-      order,
-      delivery,
-      feedback,
-      paymentStatus: held?.status === "held" ? "held" : "released",
-      heldAmountAlgo: held?.status === "held" ? held.amountAlgo : null,
-      network,
-      explorerUrl:
-        network === "testnet"
-          ? `https://testnet.explorer.perawallet.app/tx/${orderTxId}`
-          : null,
-    });
+    return NextResponse.json({ success: true, order });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to load order";
+    const msg =
+      error instanceof Error ? error.message : "Failed to confirm order";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { executePayment, getBalance } from "@/lib/blockchain/algorand";
 import { createAction } from "@/lib/a2a/messaging";
 import type { NegotiationSession } from "@/lib/agents/types";
-import { canSpendFromVault, debitVault } from "@/lib/blockchain/vault";
+import { canSpendFromVault, holdVaultFunds } from "@/lib/blockchain/vault";
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,18 +71,20 @@ export async function POST(req: NextRequest) {
 
     const escrow = await executePayment(
       deal.sellerAddress,
-      deal.finalPrice,
+      autoBuy ? 0 : deal.finalPrice,
       orderNote,
     );
 
     const buyerBal = await getBalance(escrow.buyerAddress);
     const sellerBal = await getBalance(escrow.sellerAddress);
 
-    let vaultAfterDebit: Awaited<ReturnType<typeof debitVault>> | null = null;
+    let vaultAfterHold: Awaited<ReturnType<typeof holdVaultFunds>> | null =
+      null;
     let vaultWarning: string | null = null;
     if (autoBuy && buyerAddress) {
       try {
-        vaultAfterDebit = await debitVault({
+        vaultAfterHold = await holdVaultFunds({
+          orderTxId: escrow.txId,
           buyerAddress,
           amountAlgo: deal.finalPrice,
           sellerAddress: deal.sellerAddress,
@@ -92,7 +94,7 @@ export async function POST(req: NextRequest) {
         vaultWarning =
           e instanceof Error
             ? e.message
-            : "Vault debit bookkeeping failed after successful payment";
+            : "Vault hold bookkeeping failed after order marker confirmation";
       }
     }
 
@@ -104,21 +106,24 @@ export async function POST(req: NextRequest) {
         `**Payment Confirmed On-Chain!**\n` +
           `• **TX ID:** \`${escrow.txId}\`\n` +
           `• **Confirmed Round:** ${escrow.confirmedRound}\n` +
-          `• **Amount:** ${escrow.amount} ALGO\n` +
+          `• **Order Marker Amount:** ${escrow.amount} ALGO\n` +
           `• **Buyer Balance:** ${buyerBal.toFixed(4)} ALGO\n` +
           `• **Seller Balance:** ${sellerBal.toFixed(4)} ALGO`,
         { escrow, buyerBal, sellerBal },
       ),
     );
 
-    if (vaultAfterDebit) {
+    if (vaultAfterHold) {
       actions.push(
         createAction(
           "system",
           "Vault",
           "transaction",
-          `Vault debited **${deal.finalPrice} ALGO**. Remaining buyer vault balance: **${vaultAfterDebit.balanceAlgo.toFixed(6)} ALGO**.`,
-          { vault: vaultAfterDebit },
+          `Payment is now **held in vault escrow** for this order: **${deal.finalPrice} ALGO**. Funds will be released only after seller delivery submission. Remaining buyer vault balance: **${vaultAfterHold.account.balanceAlgo.toFixed(6)} ALGO**.`,
+          {
+            vault: vaultAfterHold.account,
+            heldPayment: vaultAfterHold.heldPayment,
+          },
         ),
       );
     } else if (vaultWarning) {
@@ -127,7 +132,7 @@ export async function POST(req: NextRequest) {
           "system",
           "Vault",
           "result",
-          `Payment succeeded but vault ledger update needs review: ${vaultWarning}`,
+          `Order marker succeeded but vault hold update needs review: ${vaultWarning}`,
         ),
       );
     }
@@ -137,7 +142,9 @@ export async function POST(req: NextRequest) {
         "buyer",
         "Buyer Agent",
         "result",
-        `Transaction complete! **${deal.finalPrice} ALGO** paid to **${deal.sellerName}** for "${deal.service}".\n\n` +
+        (autoBuy
+          ? `Order created and payment is **held**: **${deal.finalPrice} ALGO** reserved for **${deal.sellerName}** until delivery is posted.\n\n`
+          : `Transaction complete! **${deal.finalPrice} ALGO** paid to **${deal.sellerName}** for "${deal.service}".\n\n`) +
           `**Payment TX:** \`${escrow.txId}\`\n` +
           `**Listing TX:** \`${deal.listingTxId.slice(0, 20)}...\``,
       ),
@@ -147,7 +154,8 @@ export async function POST(req: NextRequest) {
       success: true,
       escrow,
       actions,
-      vault: vaultAfterDebit,
+      vault: vaultAfterHold?.account,
+      heldPayment: vaultAfterHold?.heldPayment,
       vaultWarning,
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useWallet } from "@txnlab/use-wallet-react";
 import {
   AlertTriangle,
@@ -45,6 +46,8 @@ interface SellerOrderRow {
   service: string;
   price: number;
   deliveryKind?: string;
+  paymentStatus?: "held" | "released";
+  heldAmountAlgo?: number | null;
 }
 
 const defaultForm: ListingForm = {
@@ -88,16 +91,6 @@ export default function SellPage() {
 
   const [myOrders, setMyOrders] = useState<SellerOrderRow[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [selectedOrderTxId, setSelectedOrderTxId] = useState<string>("");
-  const [deliveryFields, setDeliveryFields] = useState<
-    { key: string; value: string }[]
-  >([
-    { key: "username", value: "" },
-    { key: "password", value: "" },
-  ]);
-  const [deliveryInstructions, setDeliveryInstructions] = useState<string>("");
-  const [deliveryStatus, setDeliveryStatus] = useState<string>("");
-  const [delivering, setDelivering] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -153,81 +146,6 @@ export default function SellPage() {
     void refreshListings();
     void refreshOrders();
   }, [account?.address]);
-
-  async function prepareAndSubmitDeliveryProof(
-    orderTxId: string,
-  ): Promise<void> {
-    if (!account) return;
-    setDelivering(true);
-    setDeliveryStatus("Preparing delivery proof transaction...");
-    setError("");
-    try {
-      const prep = await apiRequest<{ unsignedTxn: string }>(
-        "/api/delivery/prepare-proof",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sellerAddress: account.address, orderTxId }),
-        },
-      );
-      const unsignedBytes = decodeTxnB64(prep.unsignedTxn);
-      setDeliveryStatus("Waiting for wallet signature...");
-      const signed = (await signTransactions([unsignedBytes]))[0];
-      if (!signed) throw new Error("Wallet returned an empty signature");
-      const signedB64 = encodeTxnB64(signed);
-      setDeliveryStatus("Submitting proof on-chain...");
-      await apiRequest<{ txId: string }>("/api/wallet/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signedTxn: signedB64 }),
-      });
-      setDeliveryStatus("Delivery proof confirmed. Now submit access payload.");
-    } catch (e) {
-      setError(getErrorText(e));
-      setDeliveryStatus("");
-    } finally {
-      setDelivering(false);
-    }
-  }
-
-  async function submitDelivery(
-    orderTxId: string,
-    deliveryKind: string,
-  ): Promise<void> {
-    if (!account) return;
-    setDelivering(true);
-    setDeliveryStatus("Submitting delivery payload...");
-    setError("");
-    try {
-      const fields: Record<string, string> = {};
-      for (const row of deliveryFields) {
-        const k = row.key.trim();
-        const v = row.value;
-        if (!k || !v) continue;
-        fields[k] = v;
-      }
-      await apiRequest<{ success: boolean }>("/api/delivery/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sellerAddress: account.address,
-          orderTxId,
-          deliveryKind,
-          fields,
-          instructions: deliveryInstructions,
-        }),
-      });
-      setDeliveryStatus(
-        "Delivery saved. Buyer can reveal credentials in Orders.",
-      );
-      await refreshOrders();
-    } catch (e) {
-      setError(getErrorText(e));
-      setDeliveryStatus("");
-    } finally {
-      setDelivering(false);
-    }
-  }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -297,7 +215,6 @@ export default function SellPage() {
     setLoadingOrders(true);
     setError("");
     setWarning("");
-    setDeliveryStatus("");
     try {
       const data = await apiRequest<{
         orders?: SellerOrderRow[];
@@ -514,113 +431,38 @@ export default function SellPage() {
           </div>
 
           {warning && <p className="status-muted">{warning}</p>}
-          {deliveryStatus && <p className="status-muted">{deliveryStatus}</p>}
 
           <div className="list-stack">
             {myOrders.map((o) => (
-              <button
-                key={o.orderTxId}
-                type="button"
-                className="list-item"
-                onClick={() => setSelectedOrderTxId(o.orderTxId)}
-                style={{ textAlign: "left" }}
-              >
-                <p style={{ margin: 0 }}>{o.service}</p>
-                <span>
-                  {o.type} • {o.price} ALGO • Buyer{" "}
-                  {String(o.buyer).slice(0, 8)}…
-                </span>
-              </button>
+              <div key={o.orderTxId} className="list-item">
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0 }}>{o.service}</p>
+                  <span>
+                    {o.type} • {o.price} ALGO • Buyer{" "}
+                    {String(o.buyer).slice(0, 8)}…
+                  </span>
+                  <span>
+                    Status:{" "}
+                    {o.paymentStatus === "held"
+                      ? "Payment Held"
+                      : "Payment Released"}
+                    {o.paymentStatus === "held" && o.heldAmountAlgo
+                      ? ` • Held: ${o.heldAmountAlgo} ALGO`
+                      : ""}
+                  </span>
+                </div>
+                <Link
+                  className="btn-outline"
+                  href={`/sell/delivery/${encodeURIComponent(o.orderTxId)}`}
+                >
+                  Open Delivery
+                </Link>
+              </div>
             ))}
             {!myOrders.length && (
               <p className="status-muted">No incoming orders found yet.</p>
             )}
           </div>
-
-          {selectedOrderTxId && (
-            <div style={{ marginTop: 12 }}>
-              <p className="code-tag" style={{ wordBreak: "break-all" }}>
-                Selected order: {selectedOrderTxId}
-              </p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  className="btn-outline"
-                  type="button"
-                  disabled={delivering}
-                  onClick={() =>
-                    prepareAndSubmitDeliveryProof(selectedOrderTxId)
-                  }
-                >
-                  Post Delivery Proof
-                </button>
-                <button
-                  className="btn-neon"
-                  type="button"
-                  disabled={delivering}
-                  onClick={() =>
-                    submitDelivery(selectedOrderTxId, form.deliveryKind)
-                  }
-                >
-                  Submit Delivery
-                </button>
-              </div>
-
-              <label style={{ marginTop: 10, display: "block" }}>
-                <span>DELIVERY INSTRUCTIONS</span>
-                <textarea
-                  className="cyber-textarea"
-                  value={deliveryInstructions}
-                  onChange={(e) => setDeliveryInstructions(e.target.value)}
-                />
-              </label>
-
-              <div
-                style={{
-                  marginTop: 10,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                {deliveryFields.map((row, idx) => (
-                  <div key={idx} style={{ display: "flex", gap: 8 }}>
-                    <input
-                      value={row.key}
-                      onChange={(e) =>
-                        setDeliveryFields((p) =>
-                          p.map((it, i) =>
-                            i === idx ? { ...it, key: e.target.value } : it,
-                          ),
-                        )
-                      }
-                      placeholder="> key"
-                      className="cyber-select"
-                    />
-                    <input
-                      value={row.value}
-                      onChange={(e) =>
-                        setDeliveryFields((p) =>
-                          p.map((it, i) =>
-                            i === idx ? { ...it, value: e.target.value } : it,
-                          ),
-                        )
-                      }
-                      placeholder="> value"
-                    />
-                  </div>
-                ))}
-                <button
-                  className="btn-outline"
-                  type="button"
-                  onClick={() =>
-                    setDeliveryFields((p) => [...p, { key: "", value: "" }])
-                  }
-                >
-                  Add Field
-                </button>
-              </div>
-            </div>
-          )}
         </article>
       </section>
     </DashboardShell>

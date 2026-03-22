@@ -1,6 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { DeliveryRecord } from "@/lib/agents/types";
+import {
+  decryptDeliveryPayload,
+  encryptDeliveryPayload,
+} from "@/lib/crypto/delivery";
 
 const FILE_PATH = path.join(
   process.cwd(),
@@ -10,7 +14,16 @@ const FILE_PATH = path.join(
 );
 
 interface DeliveryLedger {
-  deliveries: Record<string, DeliveryRecord>;
+  deliveries: Record<string, StoredDeliveryRecord>;
+}
+
+interface StoredDeliveryRecord extends Omit<
+  DeliveryRecord,
+  "fields" | "instructions"
+> {
+  encryptedPayload?: string;
+  fields?: Record<string, string>;
+  instructions?: string;
 }
 
 async function ensureFile(): Promise<void> {
@@ -44,7 +57,39 @@ export async function getDelivery(
   orderTxId: string,
 ): Promise<DeliveryRecord | null> {
   const ledger = await readLedger();
-  return ledger.deliveries[orderTxId] ?? null;
+  const stored = ledger.deliveries[orderTxId];
+  if (!stored) return null;
+
+  // Backward compatibility: read plaintext legacy records if present.
+  if (!stored.encryptedPayload) {
+    return {
+      orderTxId: stored.orderTxId,
+      seller: stored.seller,
+      deliveredAt: stored.deliveredAt,
+      deliveryKind: stored.deliveryKind,
+      fields: stored.fields ?? {},
+      instructions: stored.instructions,
+    };
+  }
+
+  const payloadStr = decryptDeliveryPayload(stored.encryptedPayload);
+  const payloadUnknown: unknown = JSON.parse(payloadStr);
+  const payload =
+    typeof payloadUnknown === "object" && payloadUnknown !== null
+      ? (payloadUnknown as {
+          fields?: Record<string, string>;
+          instructions?: string;
+        })
+      : {};
+
+  return {
+    orderTxId: stored.orderTxId,
+    seller: stored.seller,
+    deliveredAt: stored.deliveredAt,
+    deliveryKind: stored.deliveryKind,
+    fields: payload.fields ?? {},
+    instructions: payload.instructions,
+  };
 }
 
 export async function setDelivery(
@@ -58,12 +103,30 @@ export async function setDelivery(
   }
 
   const ledger = await readLedger();
+  const encryptedPayload = encryptDeliveryPayload(
+    JSON.stringify({
+      fields: record.fields,
+      instructions: record.instructions,
+    }),
+  );
+
   ledger.deliveries[record.orderTxId] = {
-    ...record,
+    orderTxId: record.orderTxId,
+    seller: record.seller,
     deliveredAt: Number.isFinite(Number(record.deliveredAt))
       ? Number(record.deliveredAt)
       : Date.now(),
+    deliveryKind: record.deliveryKind,
+    encryptedPayload,
   };
   await writeLedger(ledger);
-  return ledger.deliveries[record.orderTxId];
+
+  return {
+    orderTxId: record.orderTxId,
+    seller: record.seller,
+    deliveredAt: ledger.deliveries[record.orderTxId].deliveredAt,
+    deliveryKind: record.deliveryKind,
+    fields: record.fields,
+    instructions: record.instructions,
+  };
 }

@@ -4,6 +4,7 @@ import { getIndexer, getNetworkMode } from "@/lib/blockchain/algorand";
 import { getRememberedOrders, rememberOrders } from "@/lib/orders/registry";
 import { getDelivery } from "@/lib/delivery/registry";
 import { getFeedbackForOrder } from "@/lib/feedback/ledger";
+import { getHeldPayment } from "@/lib/blockchain/vault";
 import type { OnChainListing, OrderRecord } from "@/lib/agents/types";
 
 function normalizeType(value: string): string {
@@ -64,6 +65,8 @@ function parseOrderNote(
 type EnrichedOrder = OrderRecord & {
   deliveredAt: number | null;
   feedback: Awaited<ReturnType<typeof getFeedbackForOrder>>;
+  paymentStatus: "held" | "released";
+  heldAmountAlgo: number | null;
 };
 
 async function mergeOrders(
@@ -87,15 +90,20 @@ async function mergeOrders(
   });
 
   const enriched = await Promise.all(
-    merged.map(async (o) => {
-      const delivery = await getDelivery(o.orderTxId);
-      const feedback = await getFeedbackForOrder(o.orderTxId);
-      return {
-        ...o,
-        deliveredAt: delivery?.deliveredAt ?? null,
-        feedback,
-      };
-    }),
+    merged
+      .filter((o) => Number(o.confirmedRound) > 0)
+      .map(async (o) => {
+        const delivery = await getDelivery(o.orderTxId);
+        const feedback = await getFeedbackForOrder(o.orderTxId);
+        const held = await getHeldPayment(o.orderTxId);
+        return {
+          ...o,
+          deliveredAt: delivery?.deliveredAt ?? null,
+          feedback,
+          paymentStatus: held?.status === "held" ? "held" : "released",
+          heldAmountAlgo: held?.status === "held" ? held.amountAlgo : null,
+        };
+      }),
   );
 
   return enriched;

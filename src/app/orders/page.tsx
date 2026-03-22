@@ -11,6 +11,8 @@ import type { FeedbackSummary, OrderRecord } from "@/lib/agents/types";
 interface OrdersApiRow extends OrderRecord {
   deliveredAt: number | null;
   feedback: FeedbackSummary | null;
+  paymentStatus?: "held" | "released";
+  heldAmountAlgo?: number | null;
 }
 
 function shortAddress(address: string): string {
@@ -101,7 +103,11 @@ export default function OrdersPage() {
                   {o.type} • {o.price} ALGO • Seller {shortAddress(o.seller)}
                 </span>
                 <span>
-                  Delivery: {o.deliveredAt ? "Delivered" : "Pending"} •
+                  Payment: {o.paymentStatus === "held" ? "Held" : "Released"}
+                  {o.paymentStatus === "held" && o.heldAmountAlgo
+                    ? ` (${o.heldAmountAlgo} ALGO)`
+                    : ""}{" "}
+                  • Delivery: {o.deliveredAt ? "Delivered" : "Pending"} •
                   Feedback:{" "}
                   {o.feedback
                     ? o.feedback.isUndone

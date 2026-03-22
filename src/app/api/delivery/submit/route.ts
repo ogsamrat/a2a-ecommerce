@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import algosdk from "algosdk";
 import { getIndexer } from "@/lib/blockchain/algorand";
+import { executePayment } from "@/lib/blockchain/algorand";
 import { setDelivery } from "@/lib/delivery/registry";
+import {
+  getHeldPayment,
+  markHeldPaymentReleased,
+} from "@/lib/blockchain/vault";
 import type {
   DeliveryRecord,
   OnChainListing,
@@ -181,7 +186,43 @@ export async function POST(req: NextRequest) {
     };
 
     const saved = await setDelivery(record);
-    return NextResponse.json({ success: true, delivery: saved });
+
+    const heldPayment = await getHeldPayment(orderTxId);
+    let release: {
+      txId: string;
+      confirmedRound: number;
+      amountAlgo: number;
+    } | null = null;
+
+    if (heldPayment?.status === "held") {
+      const releasePayment = await executePayment(
+        parsedOrder.seller,
+        heldPayment.amountAlgo,
+        "a2a-release:" +
+          JSON.stringify({
+            v: 1,
+            orderTxId,
+            buyer: heldPayment.buyerAddress,
+            seller: heldPayment.sellerAddress,
+            amount: heldPayment.amountAlgo,
+            releasedAt: Date.now(),
+          }),
+      );
+
+      await markHeldPaymentReleased({
+        orderTxId,
+        releaseTxId: releasePayment.txId,
+        releaseConfirmedRound: releasePayment.confirmedRound,
+      });
+
+      release = {
+        txId: releasePayment.txId,
+        confirmedRound: releasePayment.confirmedRound,
+        amountAlgo: heldPayment.amountAlgo,
+      };
+    }
+
+    return NextResponse.json({ success: true, delivery: saved, release });
   } catch (error) {
     const msg =
       error instanceof Error ? error.message : "Failed to submit delivery";

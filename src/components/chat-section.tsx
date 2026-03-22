@@ -6,16 +6,7 @@ import { ChatInterface } from "@/components/chat-interface";
 import { NegotiationTimeline } from "@/components/negotiation-timeline";
 import { TransactionStatus } from "@/components/transaction-status";
 import { ListingCard } from "@/components/seller-card";
-import {
-  Send,
-  Bot,
-  Zap,
-  X,
-  CheckCircle,
-  ArrowRight,
-  ToggleLeft,
-  ToggleRight,
-} from "lucide-react";
+import { Send, Bot, Zap, X, CheckCircle, ArrowRight } from "lucide-react";
 import type {
   SessionState,
   AgentAction,
@@ -42,7 +33,7 @@ const INIT_STATE: SessionState = {
   escrow: EMPTY_ESCROW,
   actions: [],
   phase: "idle",
-  autoBuy: false,
+  autoBuy: true,
 };
 
 const PHASE_LABEL: Record<string, { text: string; color: string }> = {
@@ -84,6 +75,8 @@ export function ChatSection() {
   const [vaultLoading, setVaultLoading] = useState(false);
   const [funding, setFunding] = useState(false);
   const [depositAmount, setDepositAmount] = useState("1");
+  const [withdrawAmount, setWithdrawAmount] = useState("1");
+  const [withdrawing, setWithdrawing] = useState(false);
   const [policySaving, setPolicySaving] = useState(false);
   const [maxPerOrder, setMaxPerOrder] = useState("1");
   const [dailyCap, setDailyCap] = useState("5");
@@ -272,23 +265,7 @@ export function ChatSection() {
       return;
     }
 
-    if (state.autoBuy) {
-      await execDeal(nr.bestDeal, true);
-    } else {
-      addActions([
-        {
-          id: crypto.randomUUID(),
-          agent: "buyer",
-          agentName: "Buyer Agent",
-          type: "result",
-          content: currentAccount
-            ? `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Ready to execute — confirm below.`
-            : `Best deal: **${nr.bestDeal.finalPrice} ALGO** from **${nr.bestDeal.sellerName}**. Connect your wallet to sign.`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      setState((p) => ({ ...p, phase: "completed" }));
-    }
+    await execDeal(nr.bestDeal, true);
     setLoading(false);
   }
 
@@ -490,6 +467,47 @@ export function ChatSection() {
       );
     } finally {
       setFunding(false);
+    }
+  }
+
+  async function withdrawVaultToWallet(): Promise<void> {
+    if (!currentAccount?.address || withdrawing) return;
+
+    const amount = Number(withdrawAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      sysAction(
+        "**Vault Withdraw Error:** Enter a valid withdrawal amount.",
+        "result",
+      );
+      return;
+    }
+
+    setWithdrawing(true);
+    try {
+      const r = await fetch("/api/vault/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerAddress: currentAccount.address,
+          amountAlgo: amount,
+        }),
+      });
+
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+
+      await refreshVault();
+      sysAction(
+        `Vault withdrawn: **${d.amountAlgo} ALGO** returned to buyer wallet (TX: \`${d.txId}\`)`,
+        "transaction",
+      );
+    } catch (e) {
+      sysAction(
+        `**Vault Withdraw Error:** ${e instanceof Error ? e.message : "Failed"}`,
+        "result",
+      );
+    } finally {
+      setWithdrawing(false);
     }
   }
 
@@ -756,43 +774,16 @@ export function ChatSection() {
                 Auto-Buy
               </span>
             </div>
-            <button
-              onClick={() => setState((p) => ({ ...p, autoBuy: !p.autoBuy }))}
+            <span
               style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                color: "var(--text-3)",
+                color: "var(--blue-bright)",
+                fontWeight: 700,
                 fontSize: "0.75rem",
+                letterSpacing: "0.05em",
               }}
             >
-              {state.autoBuy ? (
-                <>
-                  <ToggleRight
-                    size={20}
-                    color="var(--blue-bright)"
-                    fill="currentColor"
-                  />
-                  <span
-                    style={{
-                      color: "var(--blue-bright)",
-                      fontWeight: 600,
-                      fontSize: "0.75rem",
-                    }}
-                  >
-                    ON
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ToggleLeft size={20} />
-                  <span>OFF</span>
-                </>
-              )}
-            </button>
+              ALWAYS ON
+            </span>
           </div>
           <p
             style={{ fontSize: "0.7rem", color: "var(--text-4)", marginTop: 4 }}
@@ -893,6 +884,24 @@ export function ChatSection() {
                   style={{ padding: "0.35rem 0.55rem", fontSize: "0.72rem" }}
                 >
                   {funding ? "Funding..." : "Fund"}
+                </button>
+              </div>
+
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  className="trae-input"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="Withdraw ALGO"
+                  style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
+                />
+                <button
+                  className="btn-secondary"
+                  onClick={() => withdrawVaultToWallet()}
+                  disabled={withdrawing || vaultLoading}
+                  style={{ padding: "0.35rem 0.55rem", fontSize: "0.72rem" }}
+                >
+                  {withdrawing ? "Withdrawing..." : "Withdraw"}
                 </button>
               </div>
 

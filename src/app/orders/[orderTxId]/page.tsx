@@ -27,6 +27,10 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [delivery, setDelivery] = useState<DeliveryRecord | null>(null);
   const [feedback, setFeedback] = useState<FeedbackSummary | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<"held" | "released">(
+    "released",
+  );
+  const [heldAmountAlgo, setHeldAmountAlgo] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -48,6 +52,8 @@ export default function OrderDetailPage() {
         order: OrderRecord;
         delivery: DeliveryRecord | null;
         feedback: FeedbackSummary | null;
+        paymentStatus: "held" | "released";
+        heldAmountAlgo: number | null;
         explorerUrl: string | null;
       }>(
         `/api/orders/get?orderTxId=${encodeURIComponent(orderTxId)}&buyer=${encodeURIComponent(account.address)}`,
@@ -55,11 +61,15 @@ export default function OrderDetailPage() {
       setOrder(data.order);
       setDelivery(data.delivery);
       setFeedback(data.feedback);
+      setPaymentStatus(data.paymentStatus ?? "released");
+      setHeldAmountAlgo(data.heldAmountAlgo ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load order");
       setOrder(null);
       setDelivery(null);
       setFeedback(null);
+      setPaymentStatus("released");
+      setHeldAmountAlgo(null);
     } finally {
       setLoading(false);
     }
@@ -109,6 +119,12 @@ export default function OrderDetailPage() {
                   </span>
                   <span style={{ wordBreak: "break-all" }}>
                     Listing TX: {order.listingTxId}
+                  </span>
+                  <span>
+                    Payment: {paymentStatus === "held" ? "Held" : "Released"}
+                    {paymentStatus === "held" && heldAmountAlgo
+                      ? ` (${heldAmountAlgo} ALGO)`
+                      : ""}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>

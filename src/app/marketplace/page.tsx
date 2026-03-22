@@ -162,7 +162,16 @@ export default function MarketplacePage() {
         body: JSON.stringify({ signedTxn: signedB64 }),
       });
 
-      setPurchaseMsg(`Order created: ${submit.txId}`);
+      await apiRequest<{ success: boolean }>("/api/orders/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          txId: submit.txId,
+          buyerAddress: activeAccount.address,
+        }),
+      });
+
+      setPurchaseMsg(`Order confirmed: ${submit.txId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Purchase failed");
     } finally {
