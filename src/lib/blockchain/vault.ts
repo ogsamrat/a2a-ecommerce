@@ -92,11 +92,26 @@ export async function getVaultBalance(): Promise<number> {
   }
 }
 
+export async function getVaultSpendableAlgo(): Promise<number> {
+  const vaultAddr = getVaultAddress();
+  const algod = getClient().client.algod;
+  try {
+    const info = await algod.accountInformation(vaultAddr).do();
+    const amount = Number(info.amount ?? 0);
+    const minBalance = Number(info.minBalance ?? 0);
+    // Keep a tiny fee/safety buffer to avoid mempool min-balance rejects.
+    const spendableMicroAlgos = Math.max(0, amount - minBalance - 1_000);
+    return spendableMicroAlgos / 1_000_000;
+  } catch {
+    return 0;
+  }
+}
+
 /** Execute a payment from the vault (auto-signed). */
 export async function vaultPayment(
   receiverAddress: string,
   amountAlgo: number,
-  note?: string
+  note?: string,
 ): Promise<{ txId: string; confirmedRound: number }> {
   const vault = loadVault();
   const algod = getClient().client.algod;
@@ -123,7 +138,7 @@ export async function vaultPayment(
  * Used for reputation updates, ZK commits, etc.
  */
 export async function vaultSignAndSubmit(
-  unsignedTxnB64: string
+  unsignedTxnB64: string,
 ): Promise<{ txId: string; confirmedRound: number }> {
   const vault = loadVault();
   const algod = getClient().client.algod;

@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "npx next dev",
-    "build": "npx next build",
+    "dev": "npx next dev --webpack",
+    "build": "npx next build --webpack",
     "start": "npx next start",
     "lint": "npx next lint",
     "a2a": "npx tsx scripts/run.ts",
@@ -27,7 +27,7 @@
     "dotenv": "^17.3.1",
     "groq-sdk": "^0.18.0",
     "lute-connect": "^1.7.0",
-    "next": "^15.3.0",
+    "next": "^16.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "uuid": "^11.1.0"
@@ -41,9 +41,12 @@
     "@types/react-dom": "^19.0.0",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.3.0",
+    "eslint-config-next": "^16.2.1",
     "tailwindcss": "^4.1.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0"
+  },
+  "overrides": {
+    "use-sync-external-store": "^1.6.0"
   }
 }

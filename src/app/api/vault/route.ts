@@ -10,6 +10,7 @@ import { getClient } from "@/lib/blockchain/algorand";
 import {
   getVaultAddress,
   getVaultBalance,
+  getVaultSpendableAlgo,
   vaultPayment,
   vaultSignAndSubmit,
 } from "@/lib/blockchain/vault";
@@ -31,8 +32,23 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid or empty JSON body" },
+        { status: 400 },
+      );
+    }
     const { action } = body as { action: string };
+
+    if (!action) {
+      return NextResponse.json(
+        { error: "action is required (fund | execute | sign)" },
+        { status: 400 },
+      );
+    }
 
     // ─── Fund vault (returns unsigned txn for user wallet to sign) ────
     if (action === "fund") {
@@ -43,7 +59,7 @@ export async function POST(req: NextRequest) {
       if (!senderAddress || !amountAlgo) {
         return NextResponse.json(
           { error: "senderAddress and amountAlgo required" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -60,7 +76,7 @@ export async function POST(req: NextRequest) {
       });
 
       const unsignedB64 = Buffer.from(
-        algosdk.encodeUnsignedTransaction(txn)
+        algosdk.encodeUnsignedTransaction(txn),
       ).toString("base64");
 
       return NextResponse.json({
@@ -81,26 +97,30 @@ export async function POST(req: NextRequest) {
       if (!receiverAddress || !amountAlgo) {
         return NextResponse.json(
           { error: "receiverAddress and amountAlgo required" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       // Check balance
       const balance = await getVaultBalance();
-      if (balance < amountAlgo + 0.01) {
+      const spendable = await getVaultSpendableAlgo();
+      if (spendable < amountAlgo + 0.001) {
         return NextResponse.json(
           {
-            error: `Vault has ${balance.toFixed(4)} ALGO but needs ${amountAlgo} + fees`,
+            error:
+              `Vault has ${balance.toFixed(4)} ALGO total, ${spendable.toFixed(4)} ALGO spendable. ` +
+              `Needs at least ${(amountAlgo + 0.001).toFixed(4)} ALGO including fee buffer.`,
             balance,
+            spendable,
           },
-          { status: 402 }
+          { status: 402 },
         );
       }
 
       const result = await vaultPayment(
         receiverAddress,
         amountAlgo,
-        note ?? "A2A Vault Payment"
+        note ?? "A2A Vault Payment",
       );
 
       const newBalance = await getVaultBalance();
@@ -119,7 +139,7 @@ export async function POST(req: NextRequest) {
       if (!unsignedTxn) {
         return NextResponse.json(
           { error: "unsignedTxn required" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -130,6 +150,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Vault operation failed";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const isMinBalance = /below min|TransactionPool\.Remember/i.test(msg);
+    return NextResponse.json(
+      { error: msg },
+      { status: isMinBalance ? 402 : 500 },
+    );
   }
 }
